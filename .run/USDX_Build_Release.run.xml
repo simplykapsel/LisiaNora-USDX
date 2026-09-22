@@ -7,7 +7,7 @@
     <option name="SCRIPT_OPTIONS" value="-Configuration Release" />
     <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
     <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-    <option name="INTERPRETER_PATH" value="powershell.exe" />
+    <option name="INTERPRETER_PATH" value="C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" />
     <option name="INTERPRETER_OPTIONS" value="-NoProfile -File" />
     <option name="EXECUTE_IN_TERMINAL" value="false" />
     <option name="EXECUTE_SCRIPT_FILE" value="true" />

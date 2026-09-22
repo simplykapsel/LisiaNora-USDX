@@ -5,14 +5,14 @@ if not (root/'game/ultrastardx.exe').is_file(): raise SystemExit('Build USDX fir
 (root/'artifacts').mkdir(exist_ok=True)
 version=(root/'VERSION').read_text().strip()
 destination=root/'artifacts'/f'LisiaNora-USDX-{version}-windows-x64.zip'
-exclude_dirs={'songs','playlists','screenshots'}
+exclude_dirs={'songs','playlists','screenshots','.queue-bridge'}
 with ZipFile(destination,'w',ZIP_DEFLATED,compresslevel=5) as archive:
     for file in sorted((root/'game').rglob('*')):
         if not file.is_file(): continue
         rel=file.relative_to(root/'game')
         if any(part in exclude_dirs for part in rel.parts): continue
         if file.name.lower()=='ultrastardx-lazarus.exe': continue
-        if file.name.lower()=='config.ini' or file.suffix.lower() in {'.db','.sqlite','.log','.debug'}: continue
+        if file.name.lower()=='config.ini' or any(suffix in file.name.lower() for suffix in ('.db-', '.sqlite-', '.sqlite3')) or file.suffix.lower() in {'.db','.sqlite','.log','.debug'}: continue
         archive.write(file,rel.as_posix())
     for name in ['COPYING','COPYRIGHT.txt','LICENSE','README.md']:
         if (root/name).is_file(): archive.write(root/name,name)

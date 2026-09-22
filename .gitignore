@@ -76,3 +76,5 @@ ppaslink.sh
 /artifacts/
 /bass24.zip
 /game/*.sqlite*
+
+/game/.queue-bridge/

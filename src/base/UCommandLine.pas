@@ -73,6 +73,7 @@ type
       SongPath:   IPath;
       ConfigFile: IPath;
       ScoreFile:  IPath;
+      QueueBridge: IPath;
 
       Renderer: string;
 
@@ -161,6 +162,7 @@ begin
   SongPath    := PATH_NONE;
   ConfigFile  := PATH_NONE;
   ScoreFile   := PATH_NONE;
+  QueueBridge := PATH_NONE;
 end;
 
 {**
@@ -270,6 +272,12 @@ begin
           // write value to string
           SongPath := Path(ParamStr(I + 1));
         end;
+      end
+
+      else if (Command = 'queuebridge') then
+      begin
+        if PCount > I then
+          QueueBridge := Path(ParamStr(I + 1)).GetAbsolutePath;
       end
 
       else if (Command = 'configfile') then

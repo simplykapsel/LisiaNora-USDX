@@ -209,6 +209,7 @@ uses
   UGraphicClasses   in 'base\UGraphicClasses.pas',
   UPlaylist         in 'base\UPlaylist.pas',
   UCommandLine      in 'base\UCommandLine.pas',
+  UQueueBridge      in 'base\UQueueBridge.pas',
   URingBuffer       in 'base\URingBuffer.pas',
   USingScores       in 'base\USingScores.pas',
   USingNotes        in 'base\USingNotes.pas',

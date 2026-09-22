@@ -1,7 +1,7 @@
 # Lisia Nora USDX — środowisko Windows
 
 Baza: oficjalny tag **v2026.9.0**, commit `8b5324f321d54491badadf5f95b4678a0bcf4633`.
-Ten etap przygotowuje narzędzia. Kod rozgrywki i integracja z kolejką nie zostały zmienione.
+Na tej bazie działa integracja wyboru utworu: [opis połączenia z kolejką](QUEUE-BRIDGE.md).
 
 ## Zainstalowane narzędzia
 
@@ -24,7 +24,7 @@ Otwórz katalog repozytorium. Wybierz konfigurację uruchamiania z listy:
 | USDX Open Lazarus | Otwiera przygotowany projekt debugowania. |
 
 Konfiguracje `.run` korzystają z dołączonej do WebStorma obsługi Shell Script,
-ale jako interpreter mają ustawiony `powershell.exe`. W Tools → External Tools
+ale jako interpreter mają ustawioną pełną ścieżkę `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`. W Tools → External Tools
 jest też lokalna grupa **LisiaNora USDX**. Nie trzeba zmieniać globalnego PATH.
 
 ## Polecenia niezależne od IDE
@@ -56,7 +56,7 @@ Projekt: `src/ultrastardx-queue-win64.lpi`. Ma poprawioną architekturę Win64,
 format DWARF 3, lokalny katalog jednostek i ścieżkę roboczą `game`.
 Oryginalny projekt upstreamu nie jest nadpisany.
 
-W Lazarusie otwórz `src/base/UMain.pas`, ustaw breakpoint na linii 330
+W Lazarusie otwórz `src/base/UMain.pas`, ustaw breakpoint na instrukcji opisanej poniżej
 (`Delay := 1000 div MAX_FPS ...`) i naciśnij F9. Jest to punkt po pierwszym
 rysowaniu klatki. `Done` powinno mieć wartość `False`.
 Test automatyczny używa GDB dostarczonego z Lazarusem i zapisuje dowody do
