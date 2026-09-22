@@ -11,7 +11,8 @@ with ZipFile(destination,'w',ZIP_DEFLATED,compresslevel=5) as archive:
         if not file.is_file(): continue
         rel=file.relative_to(root/'game')
         if any(part in exclude_dirs for part in rel.parts): continue
-        if file.name.lower()=='ultrastardx-lazarus.exe': continue
+        if file.name.lower() in {'ultrastardx-lazarus.exe', 'lisianora.exe', 'usdx-bridge.exe', 'game.ini'}: continue
+        if file.name.lower().startswith('bridge') and file.suffix.lower()=='.json': continue
         if file.name.lower()=='config.ini' or any(suffix in file.name.lower() for suffix in ('.db-', '.sqlite-', '.sqlite3')) or file.suffix.lower() in {'.db','.sqlite','.log','.debug'}: continue
         archive.write(file,rel.as_posix())
     for name in ['COPYING','COPYRIGHT.txt','LICENSE','README.md','QUEUE-BRIDGE.md']:

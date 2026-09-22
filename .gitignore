@@ -78,3 +78,13 @@ ppaslink.sh
 /game/*.sqlite*
 
 /game/.queue-bridge/
+
+# Windows client build and local profiles
+/node_modules/
+/tools/usdx-bridge/bridge*.json
+!/tools/usdx-bridge/bridge.example.json
+/tools/usdx-bridge/.queue-bridge/
+/tools/usdx-bridge/game.ini
+/tools/usdx-bridge/scores.db*
+/game/bridge*.json
+/game/game.ini

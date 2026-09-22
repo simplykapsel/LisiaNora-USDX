@@ -1,6 +1,6 @@
 # Protokół UltraStar Queue
 
-Uruchomienie gry: `ultrastardx.exe -QueueBridge <katalog>`. Bez tego argumentu integracja jest wyłączona. Produkcyjny launcher i profile NAS/VPS: [USDX-INTEGRATION.md](https://github.com/simplykapsel/ultrastar-queue/blob/main/docs/USDX-INTEGRATION.md).
+Uruchomienie gry: `ultrastardx.exe -QueueBridge <katalog>`. Bez tego argumentu integracja jest wyłączona. Produkcyjny launcher i profile NAS/VPS: [WINDOWS.md](WINDOWS.md).
 
 ## Wymiana plików
 
@@ -25,4 +25,4 @@ Wyniki gry: `selected`, `busy`, `not_found`, `expired`, `error`. Bridge dodatkow
 
 ## Testy
 
-Build i smoke testy: [DEVELOPMENT-WINDOWS.md](DEVELOPMENT-WINDOWS.md). Test API → bridge → gra: `tests/usdx-live.test.mjs` w repo aplikacji. Testy automatyczne nie weryfikują jakości mikrofonów ani odsłuchu.
+Build i smoke testy: [DEVELOPMENT-WINDOWS.md](DEVELOPMENT-WINDOWS.md). Testy API wyboru piosenki: `tests/usdx-bridge.test.mjs` w repo Queue. Testy samego bridge: `npm test` w tym repo. Testy automatyczne nie weryfikują jakości mikrofonów ani odsłuchu.

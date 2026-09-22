@@ -1,0 +1,19 @@
+{
+  "name": "lisianora-usdx-client",
+  "version": "2026.9.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "usdx:bridge": "node tools/usdx-bridge/index.mjs",
+    "package:windows": "node tools/usdx-bridge/build-windows.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "1.0.0-alpha.6",
+    "yazl": "^3.3.1"
+  }
+}

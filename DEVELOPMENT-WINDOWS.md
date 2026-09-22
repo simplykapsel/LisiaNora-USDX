@@ -2,7 +2,7 @@
 
 ## Wymagania
 
-Windows x64; Lazarus 4.8 / FPC 3.2.2 (`C:\lazarus`); MSYS2 (`C:\msys64`): autoconf, automake, make, pkgconf, Git, GCC i narzędzia MinGW64; Python 3.
+Windows x64; Lazarus 4.8 / FPC 3.2.2 (`C:\lazarus`); MSYS2 (`C:\msys64`): autoconf, automake, make, pkgconf, Git, GCC i narzędzia MinGW64; Python 3; Node.js 24+ do budowania klienta Windows.
 
 ## Przygotowanie
 
@@ -21,17 +21,17 @@ Windows x64; Lazarus 4.8 / FPC 3.2.2 (`C:\lazarus`); MSYS2 (`C:\msys64`): autoco
 
 Wynik: `game/ultrastardx.exe`. Zamknij tę kopię gry przed buildem. Parametry toolchainu: `-MsysRoot`, `-FpcBin`. Debug: `-Configuration Debug`.
 
-## Paczki
+## Paczka Windows
 
-Sama gra z DLL i zasobami:
+W tym repo uruchom:
 
 ```powershell
 .\tools\windows\package.ps1
 ```
 
-Wynik: `artifacts/LisiaNora-USDX-<wersja>-windows-x64.zip`. Bez piosenek, ustawień, wyników i logów.
+Skrypt buduje USDX Release, instaluje zależności z lockfile i pakuje grę, bridge oraz launcher. Wynik: `artifacts/LisiaNora-USDX-<wersja>-windows-x64-<czas>/` i ZIP obok. Uruchamiaj `LisiaNora.exe`. Konfiguracja: [WINDOWS.md](WINDOWS.md).
 
-Gra z launcherem i połączeniem NAS/VPS: po buildzie Release uruchom `npm run usdx:package` w repo `UltrastarQueue`. Szczegóły: [instrukcja stanowiska Windows](https://github.com/simplykapsel/ultrastar-queue/blob/main/docs/USDX-INTEGRATION.md).
+`-SkipBuild` pakuje już skompilowaną grę. `-GameOnly` tworzy paczkę samej gry. Paczki nie zawierają lokalnego tokenu, ustawień, wyników ani piosenek. Repo Queue nie jest potrzebne do builda. Ikona launchera: `icons/lisia-nora.ico`, osadzana w EXE podczas pakowania.
 
 ## WebStorm / Lazarus
 
@@ -47,6 +47,8 @@ Projekt Lazarusa: `src/ultrastardx-queue-win64.lpi`. Build: `tools/windows/lazar
 .\tools\windows\smoke-player-flow.ps1 -Flow Configured
 ```
 
+`npm ci` i `npm test` uruchamiają testy klienta bridge.
+
 Testy graczy używają osobnej konfiguracji, wyników i wymiany w `.local`. `Fresh` sprawdza inicjalizację i anulowanie konfiguracji. `Configured` sprawdza zachowanie zatwierdzonych graczy przy kolejnych wyborach. Oba sprawdzają blokadę wyboru podczas śpiewania.
 
 ## Pliki robocze
@@ -59,4 +61,4 @@ Testy graczy używają osobnej konfiguracji, wyników i wymiany w `.local`. `Fre
 | `game/.queue-bridge` | Wymiana z bridge. |
 | `.local` | Logi testów i profil Lazarusa. |
 
-Powyższe pliki, EXE, DLL i piosenki są wykluczone z Git. Workflow Windows publikuje paczkę samej gry jako artefakt; nie wdraża jej na stanowisku.
+Powyższe pliki, EXE, DLL i piosenki są wykluczone z Git. Workflow Windows publikuje paczkę gry z bridge i launcherem jako artefakt; nie wdraża jej na stanowisku.

@@ -32,6 +32,12 @@ jobs:
           if ($hash -ne 'ed25ee171d55e23cf14e0633159fdd2325efba56e186f8ab817ad3bf97d267d7') { throw 'Installer checksum mismatch' }
           $p = Start-Process "$env:RUNNER_TEMP/lazarus.exe" -ArgumentList '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=C:\lazarus' -Wait -PassThru -WindowStyle Hidden
           if ($p.ExitCode -ne 0) { throw "Installer failed: $($p.ExitCode)" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
       - name: Prepare official runtime dependencies
         shell: pwsh
         env:
@@ -42,7 +48,7 @@ jobs:
         run: ./tools/windows/build.ps1 -Configuration Release -MsysRoot '${{ steps.msys.outputs.msys2-location }}'
       - name: Package portable game
         shell: pwsh
-        run: ./tools/windows/package.ps1
+        run: ./tools/windows/package.ps1 -SkipBuild
       - uses: actions/upload-artifact@v6
         with:
           name: LisiaNora-USDX-windows-x64
