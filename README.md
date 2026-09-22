@@ -1,5 +1,7 @@
 # UltraStar Deluxe
 
+Fork Lisia Nora: [Windows build](DEVELOPMENT-WINDOWS.md), [protokół kolejki](QUEUE-BRIDGE.md), [paczka EXE i profile NAS/VPS](https://github.com/simplykapsel/ultrastar-queue/blob/main/docs/USDX-INTEGRATION.md).
+
 [![Build Status](https://github.com/UltraStar-Deluxe/USDX/actions/workflows/main.yml/badge.svg)](https://github.com/UltraStar-Deluxe/USDX/actions/workflows/main.yml)
 [![License](https://img.shields.io/badge/license-GPLv2-blue.svg)](LICENSE)
 
