@@ -59,7 +59,7 @@ uses
   ULog,
   UPath,
   UPlatform,
-  UTexture,
+  URenderer,
   UTextEncoding,
   UUnicodeStringHelper,
   UUnicodeUtils,
@@ -217,6 +217,7 @@ type
     destructor  Destroy; override;
     function    LoadSong(DuetChange: boolean): boolean;
     function    Analyse(const ReadCustomTags: Boolean = false; DuetChange: boolean = false; RapToFreestyle: boolean = false; OutOfBoundsToFreestyle: boolean = false; AudioLength: real = 0; ForceLoadNotes: boolean = false): boolean;
+    procedure   GetPreviewRange(AudioLength: real; out PreviewStartPos, PreviewEndPos: real);
     procedure   SetMedleyMode();
     procedure   Clear();
     function    MD5SongFile(SongFileR: TTextFileStream): string;
@@ -244,7 +245,7 @@ implementation
 
 uses
   StrUtils,
-  TextGL,
+  UText,
   UIni,
   UPathUtils,
   USongs,
@@ -389,6 +390,9 @@ begin
   Self.Vocals   := PATH_NONE();
   Self.Background:= PATH_NONE();
   Self.Video    := PATH_NONE();
+
+  // create default version
+  Self.FormatVersion := TVersion.Create();
 end;
 
 // This may be changed, when we rewrite song select code.
@@ -443,6 +447,7 @@ begin
   Self.Path     := aFileName.GetPath;
   Self.FileName := aFileName.GetName;
   Self.Folder   := GetFolderCategory(aFileName);
+  Self.FormatVersion := TVersion.Create();
 
   (*
   if (aFileName.IsFile) then
@@ -463,6 +468,7 @@ end;
 destructor TSong.Destroy;
 begin
   FreeAndNil(Self.FormatVersion);
+  CoverTex.Free;
   inherited;
 end;
 
@@ -1111,6 +1117,7 @@ begin
     begin
       RemoveTagsFromTagMap('VERSION');
       try
+	    self.FormatVersion.Free(); // free default version before assigning version from file
         self.FormatVersion := TVersion.Create(Value);
       except
         on E: Exception do
@@ -1126,9 +1133,7 @@ begin
         Log.LogError('Unsupported format version ' + self.FormatVersion.VersionString + '; Maximum supported version is 1.X.X: ' + FullFileName);
         Exit;
       end;
-    end
-    else
-      self.FormatVersion := TVersion.Create; //Default legacy version 0.3.0
+    end;
 
     // For Version >=1.0.0 Encoding is always UTF-8
     // For Version <1.0.0 read Encoding from ENCODING header
@@ -1502,6 +1507,52 @@ begin
     Result := FileLineNo
   else
     Result := -1;
+end;
+
+procedure TSong.GetPreviewRange(AudioLength: real; out PreviewStartPos, PreviewEndPos: real);
+var
+  EffectiveAudioStart:  real;
+  EffectiveAudioEnd:    real;
+  EffectiveAudioLength: real;
+  PreviewOffset:        real;
+begin
+  if (AudioLength <= 0.0) then
+  begin
+    PreviewStartPos := 0.0;
+    PreviewEndPos := 0.0;
+    Exit;
+  end;
+
+  EffectiveAudioStart := EnsureRange(Start, 0.0, AudioLength);
+  if (Finish > 0) then
+    EffectiveAudioEnd := EnsureRange(Finish / 1000.0, 0.0, AudioLength)
+  else
+    EffectiveAudioEnd := AudioLength;
+
+  if (EffectiveAudioEnd <= EffectiveAudioStart) then
+  begin
+    EffectiveAudioStart := 0.0;
+    EffectiveAudioEnd := AudioLength;
+  end;
+
+  PreviewEndPos := EffectiveAudioEnd;
+
+  // PreviewStart is an absolute position in the audio file, but it still
+  // needs to fall inside the part selected by START and END.
+  if ((PreviewStart > 0.0) or HasPreview) and
+     (PreviewStart >= EffectiveAudioStart) and
+     (PreviewStart < EffectiveAudioEnd) then
+  begin
+    PreviewStartPos := PreviewStart;
+    Exit;
+  end;
+
+  EffectiveAudioLength := EffectiveAudioEnd - EffectiveAudioStart;
+  PreviewOffset := EffectiveAudioLength / 4.0;
+  if (PreviewOffset > 120.0) then
+    PreviewOffset := 60.0;
+
+  PreviewStartPos := EffectiveAudioStart + PreviewOffset;
 end;
 
 function TSong.GetMD5: string;

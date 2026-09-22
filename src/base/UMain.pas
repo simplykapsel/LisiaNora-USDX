@@ -69,8 +69,8 @@ implementation
 
 uses
   math,
-  dglOpenGL,
   UCommandLine,
+  UQueueBridge,
   UCommon,
   UConfig,
   UDataBase,
@@ -89,15 +89,16 @@ uses
   URecord,
   UBeatTimer,
   UPlatform,
+  URenderer,
   USkins,
   UThemes,
   UParty,
   UPartyTournament,
   ULuaCore,
-  ULuaGl,
+  ULuaRenderer,
   ULuaLog,
   ULuaTexture,
-  ULuaTextGL,
+  ULuaText,
   ULuaParty,
   ULuaScreenSing,
   UTime,
@@ -226,8 +227,8 @@ begin
     PartyTournament := TPartyTournament.Create;
 
     LuaCore.RegisterModule('Log', ULuaLog_Lib_f);
-    LuaCore.RegisterModule('Gl', ULuaGl_Lib_f);
-    LuaCore.RegisterModule('TextGl', ULuaTextGl_Lib_f);
+    LuaCore.RegisterModule('Renderer', ULuaRenderer_Lib_f);
+    LuaCore.RegisterModule('Text', ULuaText_Lib_f);
     LuaCore.RegisterModule('Party', ULuaParty_Lib_f);
     LuaCore.RegisterModule('ScreenSing', ULuaScreenSing_Lib_f);
 
@@ -320,10 +321,11 @@ begin
 
       // keyboard/mouse/joystick events
       CheckEvents;
+      PollQueueBridge;
 
       // display
       Done := not Display.Draw;
-      SwapBuffers;
+      Renderer.SwapBuffers;
 
       // FPS limiter
       TicksCurrent := SDL_GetTicks;
@@ -511,6 +513,7 @@ begin
               if SwitchVideoMode(Mode_Fullscreen) = Mode_Fullscreen then Ini.FullScreen := 1
               else Ini.FullScreen := 0;
               Ini.Save();
+              Display.SetCursor;
 
               Break;
             end;
@@ -578,9 +581,8 @@ begin
                   Ini.FullScreen := 0;
                 end;
                 Ini.Save();
+                Display.SetCursor;
               end;
-
-              //Display.SetCursor;
 
               //glViewPort(0, 0, ScreenW, ScreenH);
             end;

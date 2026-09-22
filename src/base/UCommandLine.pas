@@ -73,6 +73,9 @@ type
       SongPath:   IPath;
       ConfigFile: IPath;
       ScoreFile:  IPath;
+      QueueBridge: IPath;
+
+      Renderer: string;
 
       // pseudo integer values
       property Language:      integer read GetLanguage;
@@ -159,6 +162,7 @@ begin
   SongPath    := PATH_NONE;
   ConfigFile  := PATH_NONE;
   ScoreFile   := PATH_NONE;
+  QueueBridge := PATH_NONE;
 end;
 
 {**
@@ -270,6 +274,12 @@ begin
         end;
       end
 
+      else if (Command = 'queuebridge') then
+      begin
+        if PCount > I then
+          QueueBridge := Path(ParamStr(I + 1)).GetAbsolutePath;
+      end
+
       else if (Command = 'configfile') then
       begin
         // check if there is another parameter to get the value from
@@ -291,6 +301,16 @@ begin
         begin
           // write value to string
           ScoreFile := Path(ParamStr(I + 1));
+        end;
+      end
+
+      else if (Command = 'renderer') then
+      begin
+        // check if there is another parameter to get the value from
+        if (PCount > I) then
+        begin
+          // write value to string
+          Renderer := (ParamStr(I + 1));
         end;
       end;
 

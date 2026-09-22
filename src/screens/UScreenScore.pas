@@ -39,11 +39,10 @@ uses
   UIni,
   UMenu,
   UMusic,
+  URenderer,
   USongs,
-  UTexture,
   UThemes,
   UWebSDK,
-  dglOpenGL,
   math,
   sdl2,
   SysUtils;
@@ -104,6 +103,7 @@ type
 
       BarTime:            cardinal;
       FinishScreenDraw:   boolean;
+      PreviewEnd:         real;
 
       aPlayerScoreScreenTextures: array[1..UIni.IMaxPlayerCount] of TPlayerScoreScreenTexture;
       aPlayerScoreScreenDatas:    array[1..UIni.IMaxPlayerCount] of TPlayerScoreScreenData;
@@ -381,7 +381,7 @@ begin
             if (CurrentSong.isDuet) or (ScreenSong.RapToFreestyle) or (ScreenSong.Mode = smMedley) then
               FadeTo(@ScreenSong)
             else
-              FadeTo(@ScreenTop5);
+              FadeTo(@ScreenHighScores);
             Exit;
           end
           else
@@ -405,7 +405,7 @@ begin
              if (CurrentSong.isDuet) or (ScreenSong.RapToFreestyle) or (ScreenSong.Mode = smMedley) then
                FadeTo(@ScreenSong)
              else
-               FadeTo(@ScreenTop5);
+               FadeTo(@ScreenHighScores);
 
           	 Exit;
            end
@@ -590,7 +590,7 @@ begin
         PlayerStaticTextures[P, I, 1].Tex := Statics[PlayerStatic[P, I]].Texture;
 
         // fallback to first screen texture for 2nd screen
-        PlayerStaticTextures[P, I, 2].Tex := PlayerStaticTextures[P, I, 1].Tex;
+        PlayerStaticTextures[P, I, 2].Tex := PlayerStaticTextures[P, I, 1].Tex.Clone;
 
         { texture for second screen }
         { we only change color for statics with playercolor
@@ -606,7 +606,10 @@ begin
           LoadColor(R, G, B, Color);
 
           with Theme.Score.PlayerStatic[P, I] do
-            PlayerStaticTextures[P, I, 2].Tex := Texture.GetTexture(Skin.GetTextureFileName(Tex), Typ, RGBFloatToInt(R, G, B));
+          begin
+            PlayerStaticTextures[P, I, 2].Tex.Free;
+            PlayerStaticTextures[P, I, 2].Tex := Renderer.GetTexture(Skin.GetTextureFileName(Tex), Typ, RGBFloatToInt(R, G, B));
+          end;
 
           PlayerStaticTextures[P, I, 2].Tex.X := Statics[PlayerStatic[P, I]].Texture.X;
           PlayerStaticTextures[P, I, 2].Tex.Y := Statics[PlayerStatic[P, I]].Texture.Y;
@@ -663,7 +666,7 @@ begin
         PlayerBoxTextures[P, I, 1].Tex := Statics[StaticNum].Texture;
 
         // fallback to first screen texture for 2nd screen
-        PlayerBoxTextures[P, I, 2].Tex := PlayerBoxTextures[P, I, 1].Tex;
+        PlayerBoxTextures[P, I, 2].Tex := PlayerBoxTextures[P, I, 1].Tex.Clone;
 
         { texture for second screen }
         { we only change color for statics with playercolor
@@ -680,7 +683,8 @@ begin
           LoadColor(R, G, B, Color);
 
           with ThemeStatic do
-            PlayerBoxTextures[P, I, 2].Tex := Texture.GetTexture(Skin.GetTextureFileName(Tex), Typ, RGBFloatToInt(R, G, B));
+            PlayerBoxTextures[P, I, 2].Tex.Free;
+            PlayerBoxTextures[P, I, 2].Tex := Renderer.GetTexture(Skin.GetTextureFileName(ThemeStatic.Tex), ThemeStatic.Typ, RGBFloatToInt(R, G, B));
 
             PlayerBoxTextures[P, I, 2].Tex.X := Statics[StaticNum].Texture.X;
             PlayerBoxTextures[P, I, 2].Tex.Y := Statics[StaticNum].Texture.Y;
@@ -882,20 +886,20 @@ begin
     //NoteBar ScoreBar
     LoadColor(R, G, B, 'P' + IntToStr(Player) + 'Dark');
     Col2 := $10000 * Round(R*255) + $100 * Round(G*255) + Round(B*255);
-    Tex_Score_NoteBarLevel_Dark[Player] := Texture.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Dark'), TEXTURE_TYPE_COLORIZED, Col2);
-    Tex_Score_NoteBarRound_Dark[Player] := Texture.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Dark_Round'), TEXTURE_TYPE_COLORIZED, Col2);
+    Tex_Score_NoteBarLevel_Dark[Player] := Renderer.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Dark'), TEXTURE_TYPE_COLORIZED, Col2);
+    Tex_Score_NoteBarRound_Dark[Player] := Renderer.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Dark_Round'), TEXTURE_TYPE_COLORIZED, Col2);
 
     //LineBonus ScoreBar
     LoadColor(R, G, B, 'P' + IntToStr(Player) + 'Light');
     Col2 := $10000 * Round(R*255) + $100 * Round(G*255) + Round(B*255);
-    Tex_Score_NoteBarLevel_Light[Player] := Texture.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Light'), TEXTURE_TYPE_COLORIZED, Col2);
-    Tex_Score_NoteBarRound_Light[Player] := Texture.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Light_Round'), TEXTURE_TYPE_COLORIZED, Col2);
+    Tex_Score_NoteBarLevel_Light[Player] := Renderer.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Light'), TEXTURE_TYPE_COLORIZED, Col2);
+    Tex_Score_NoteBarRound_Light[Player] := Renderer.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Light_Round'), TEXTURE_TYPE_COLORIZED, Col2);
 
     //GoldenNotes ScoreBar
     LoadColor(R, G, B, 'P' + IntToStr(Player) + 'Lightest');
     Col2 := $10000 * Round(R*255) + $100 * Round(G*255) + Round(B*255);
-    Tex_Score_NoteBarLevel_Lightest[Player] := Texture.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Lightest'), TEXTURE_TYPE_COLORIZED, Col2);
-    Tex_Score_NoteBarRound_Lightest[Player] := Texture.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Lightest_Round'), TEXTURE_TYPE_COLORIZED, Col2);
+    Tex_Score_NoteBarLevel_Lightest[Player] := Renderer.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Lightest'), TEXTURE_TYPE_COLORIZED, Col2);
+    Tex_Score_NoteBarRound_Lightest[Player] := Renderer.LoadTexture(Skin.GetTextureFileName('ScoreLevel_Lightest_Round'), TEXTURE_TYPE_COLORIZED, Col2);
 
     //textures
     aPlayerScoreScreenTextures[Player].Score_NoteBarLevel_Dark     := Tex_Score_NoteBarLevel_Dark[Player];
@@ -935,7 +939,8 @@ begin
     if((Screens = 2) and (PlayersPlay > 3) and (I > Trunc(PlayersPlay/2))) then
     begin
       AvatarStatic[I + ArrayStartModifier] := AddStatic(Theme.Score.AvatarStatic[I-Trunc(PlayersPlay/2) + ArrayStartModifier]);
-      Statics[AvatarStatic[I + ArrayStartModifier]].Texture := AvatarPlayerTextures[I];
+      Statics[AvatarStatic[I + ArrayStartModifier]].Texture.Free;
+      Statics[AvatarStatic[I + ArrayStartModifier]].Texture := AvatarPlayerTextures[I].Clone();
       Statics[AvatarStatic[I + ArrayStartModifier]].Texture.X := Theme.Score.AvatarStatic[I-Trunc(PlayersPlay/2) + ArrayStartModifier].X;
       Statics[AvatarStatic[I + ArrayStartModifier]].Texture.Y := Theme.Score.AvatarStatic[I-Trunc(PlayersPlay/2) + ArrayStartModifier].Y;
       Statics[AvatarStatic[I + ArrayStartModifier]].Texture.H := Theme.Score.AvatarStatic[I-Trunc(PlayersPlay/2) + ArrayStartModifier].H;
@@ -946,7 +951,8 @@ begin
     else
     begin
       AvatarStatic[I + ArrayStartModifier] := AddStatic(Theme.Score.AvatarStatic[I + ArrayStartModifier]);
-      Statics[AvatarStatic[I + ArrayStartModifier]].Texture := AvatarPlayerTextures[I];
+      Statics[AvatarStatic[I + ArrayStartModifier]].Texture.Free;
+      Statics[AvatarStatic[I + ArrayStartModifier]].Texture := AvatarPlayerTextures[I].Clone();
       Statics[AvatarStatic[I + ArrayStartModifier]].Texture.X := Theme.Score.AvatarStatic[I + ArrayStartModifier].X;
       Statics[AvatarStatic[I + ArrayStartModifier]].Texture.Y := Theme.Score.AvatarStatic[I + ArrayStartModifier].Y;
       Statics[AvatarStatic[I + ArrayStartModifier]].Texture.H := Theme.Score.AvatarStatic[I + ArrayStartModifier].H;
@@ -973,16 +979,39 @@ end;
 
 destructor TScreenScore.Destroy;
 var
-  I: integer;
+  P, I, S: integer;
 begin
   for I := 1 to UIni.IMaxPlayerCount do
   begin
-    FreeTexture(Tex_Score_NoteBarLevel_Dark[I]);
-    FreeTexture(Tex_Score_NoteBarRound_Dark[I]);
-    FreeTexture(Tex_Score_NoteBarLevel_Light[I]);
-    FreeTexture(Tex_Score_NoteBarRound_Light[I]);
-    FreeTexture(Tex_Score_NoteBarLevel_Lightest[I]);
-    FreeTexture(Tex_Score_NoteBarRound_Lightest[I]);
+    Tex_Score_NoteBarLevel_Dark[I].Free;
+    Tex_Score_NoteBarRound_Dark[I].Free;
+    Tex_Score_NoteBarLevel_Light[I].Free;
+    Tex_Score_NoteBarRound_Light[I].Free;
+    Tex_Score_NoteBarLevel_Lightest[I].Free;
+    Tex_Score_NoteBarRound_Lightest[I].Free;
+  end;
+
+  // Use the texture address stored in PlayerStaticTextures and PlayerBoxTexture to free the memory, then
+  // set the texture adddress in the TStatic object to nil so we avoid a double free in the destructor of TStatic
+  for P := Low(PlayerStaticTextures) to High(PlayerStaticTextures) do
+  begin
+    for I := Low(PlayerStaticTextures[P]) to High(PlayerStaticTextures[P]) do
+    begin
+      for S := Low(PlayerStaticTextures[P][I]) to High(PlayerStaticTextures[P][I]) do
+        PlayerStaticTextures[P, I, S].Tex.Free;
+      Statics[PlayerStatic[P, I]].Texture := nil;
+    end;
+  end;
+  for P := Low(PlayerBoxTextures) to High(PlayerBoxTextures) do
+  begin
+    for I := Low(PlayerBoxTextures[P]) to High(PlayerBoxTextures[P]) do
+    begin
+      for S := Low(PlayerBoxTextures[P][I]) to High(PlayerBoxTextures[P][I]) do
+        PlayerBoxTextures[P, I, S].Tex.Free;
+      Statics[StaticBoxLightest[P]].Texture := nil;
+      Statics[StaticBoxLight[P]].Texture := nil;
+      Statics[StaticBoxDark[P]].Texture := nil;
+    end;
   end;
   inherited;
 end;
@@ -1112,6 +1141,7 @@ begin
     Log.LogWarn('No Entry for Help-ID ' + ID, 'ScreenScore');
 
   FinishScreenDraw := false;
+  PreviewEnd := 0;
 
   {**
    * Turn backgroundmusic on
@@ -1327,6 +1357,12 @@ function TScreenScore.Draw: boolean;
 var
   PlayerCounter: integer;
 begin
+  if (PreviewEnd > 0) and (AudioPlayback.Position >= PreviewEnd) then
+  begin
+    AudioPlayback.Stop;
+    PreviewEnd := 0;
+  end;
+
 {
   player[0].ScoreInt       := 7000;
   player[0].ScoreLineInt   := 2000;
@@ -1520,23 +1556,14 @@ begin
 
     Width := aPlayerScoreScreenRatings[PlayerNumber].RateEaseValue/2;
 
-    glBindTexture(GL_TEXTURE_2D, Tex_Score_Ratings[Rating].TexNum);
-
-    glColor3f(1.0, 1.0, 1.0);
-      
-    glEnable(GL_TEXTURE_2D);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_BLEND);
-
-    glBegin(GL_QUADS);
-      glTexCoord2f(0, 0);                                                           glVertex2f(PosX - Width,  PosY - Width);
-      glTexCoord2f(Tex_Score_Ratings[Rating].TexW, 0);                              glVertex2f(PosX + Width,  PosY - Width);
-      glTexCoord2f(Tex_Score_Ratings[Rating].TexW, Tex_Score_Ratings[Rating].TexH); glVertex2f(PosX + Width,  PosY + Width);
-      glTexCoord2f(0, Tex_Score_Ratings[Rating].TexH);                              glVertex2f(PosX - Width,  PosY + Width);
-    glEnd;
-
-    glDisable(GL_BLEND);
-    glDisable(GL_TEXTURE_2d);
+    with Tex_Score_Ratings[Rating] do
+    begin
+      X := PosX - Width;
+      Y := PosY - Width;
+      W := 2 * Width;
+      H := 2 * Width;
+    end;
+    Renderer.DrawTexture(Tex_Score_Ratings[Rating]);
   end;
 end;
 
@@ -1650,6 +1677,7 @@ var
   Width:        real;
   BarStartPosX: real;
   ThemeIndex: integer;
+  Texture: TTexture;
 begin
   ThemeIndex := PlayerPositionMap[PlayerNumber-1].Position;
 
@@ -1657,52 +1685,42 @@ begin
   Width        := Theme.Score.StaticBackLevel[ThemeIndex].W;
   BarStartPosX := Theme.Score.StaticBackLevel[ThemeIndex].X;
 
-  glColor4f(1, 1, 1, 1);
-
   // set the texture for the bar
   if (BarType = sbtScore) then
-    glBindTexture(GL_TEXTURE_2D, aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarLevel_Dark.TexNum);
+    Texture := aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarLevel_Dark;
   if (BarType = sbtLine) then
-    glBindTexture(GL_TEXTURE_2D, aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarLevel_Light.TexNum);
+    Texture := aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarLevel_Light;
   if (BarType = sbtGolden) then
-    glBindTexture(GL_TEXTURE_2D, aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarLevel_Lightest.TexNum);
+    Texture := aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarLevel_Lightest;
 
   //draw it
-  glEnable(GL_TEXTURE_2D);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_BLEND);
-
-  glBegin(GL_QUADS);
-    glTexCoord2f(0, 0); glVertex3f(BarStartPosX,         BarStartPosY - NewHeight, ZBars);
-    glTexCoord2f(1, 0); glVertex3f(BarStartPosX + Width, BarStartPosY - NewHeight, ZBars);
-    glTexCoord2f(1, 1); glVertex3f(BarStartPosX + Width, BarStartPosY,             ZBars);
-    glTexCoord2f(0, 1); glVertex3f(BarStartPosX,         BarStartPosY,             ZBars);
-  glEnd;
-
-  glDisable(GL_BLEND);
-  glDisable(GL_TEXTURE_2d);
+  with Texture do
+  begin
+    X := BarStartPosX;
+    Y := BarStartPosY - NewHeight;
+    Z := ZBars;
+    W := Width;
+    H := NewHeight;
+  end;
+  Renderer.DrawTexture(Texture);
 
   //the round thing on top
   if (BarType = sbtScore) then
-    glBindTexture(GL_TEXTURE_2D, aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarRound_Dark.TexNum);
+    Texture := aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarRound_Dark;
   if (BarType = sbtLine) then
-    glBindTexture(GL_TEXTURE_2D, aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarRound_Light.TexNum);
+    Texture := aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarRound_Light;
   if (BarType = sbtGolden) then
-    glBindTexture(GL_TEXTURE_2D, aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarRound_Lightest.TexNum);
+    Texture := aPlayerScoreScreenTextures[PlayerNumber].Score_NoteBarRound_Lightest;
 
-  glEnable(GL_TEXTURE_2D);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_BLEND);
-
-  glBegin(GL_QUADS);
-    glTexCoord2f(0, 0); glVertex3f(BarStartPosX,         (BarStartPosY - Statics[StaticLevelRound[ThemeIndex]].Texture.h) - NewHeight, ZBars);
-    glTexCoord2f(1, 0); glVertex3f(BarStartPosX + Width, (BarStartPosY - Statics[StaticLevelRound[ThemeIndex]].Texture.h) - NewHeight, ZBars);
-    glTexCoord2f(1, 1); glVertex3f(BarStartPosX + Width,  BarStartPosY - NewHeight,                                                     ZBars);
-    glTexCoord2f(0, 1); glVertex3f(BarStartPosX,          BarStartPosY - NewHeight,                                                     ZBars);
-  glEnd;
-
-  glDisable(GL_BLEND);
-  glDisable(GL_TEXTURE_2d);
+  with Texture do
+  begin
+    X := BarStartPosX;
+    Y := (BarStartPosY - Statics[StaticLevelRound[ThemeIndex]].Texture.h) - NewHeight;
+    Z := ZBars;
+    W := Width;
+    H := Statics[StaticLevelRound[ThemeIndex]].Texture.h;
+  end;
+  Renderer.DrawTexture(Texture);
 end;
 
 procedure TScreenScore.EaseScoreIn(PlayerNumber: integer; ScoreType: TScoreBarType);
@@ -1772,6 +1790,7 @@ procedure TScreenSCore.StartPreview;
 var
   select:   integer;
   changed:  boolean;
+  PreviewPos: real;
   PreviewVolume: single;
 begin
   //When Music Preview is activated -> then change music
@@ -1802,13 +1821,12 @@ begin
     if changed then
     begin
       AudioPlayback.Close;
+      PreviewEnd := 0;
 
       if AudioPlayback.Open(CatSongs.Song[select].Path.Append(CatSongs.Song[select].Audio),nil) then
       begin
-        if (CatSongs.Song[select].PreviewStart > 0) then
-          AudioPlayback.Position := CatSongs.Song[select].PreviewStart
-        else
-          AudioPlayback.Position := (AudioPlayback.Length / 4);
+        CatSongs.Song[select].GetPreviewRange(AudioPlayback.Length, PreviewPos, PreviewEnd);
+        AudioPlayback.Position := PreviewPos;
 
         // set preview volume
         PreviewVolume := EnsureRange(Ini.PreviewVolume, 0, 100) / 100;

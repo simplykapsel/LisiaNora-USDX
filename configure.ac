@@ -96,11 +96,6 @@ AC_ARG_WITH([libprojectM],
       [enable projectM visualization support @<:@default=no@:>@])],
     [with_libprojectM=$withval], [with_libprojectM="no"])
 
-AC_ARG_WITH([local-projectM-presets],
-    [AS_HELP_STRING([--with-local-projectM-presets],
-		    [use the presets from game/visuals/ @<:@default=no@:>@])],
-    [with_local_projectM_presets=$withval], [with_local_projectM_presets="no"])
-
 # add OpenCV option
 AC_ARG_WITH([opencv],
     [AS_HELP_STRING([--with-opencv],
@@ -217,8 +212,6 @@ use_generated_config=yes
 if test x$FPC_PLATFORM = xwin32 -o x$FPC_PLATFORM = xwin64; then
     use_generated_config=no
     AC_MSG_NOTICE([Using src/config-win.inc for Windows library configuration; skipping pkg-config checks for bundled runtime DLLs.])
-    libprojectM_USE_CWRAPPER=no
-    AC_SUBST(USE_PROJECTM_CWRAPPER, $libprojectM_USE_CWRAPPER)
     opencv_USE_CWRAPPER=yes
     AC_SUBST(USE_OPENCV_CWRAPPER, $opencv_USE_CWRAPPER)
 else
@@ -310,7 +303,9 @@ AC_SUBST_DEFINE(HAVE_FFMPEG, $ffmpeg_HAVE)
 # map avutil library version to ffmpeg version
 AC_MSG_CHECKING([version of ffmpeg])
 # the order is ([avutil], [avcodec], [avformat], [swscale], [swresample])
-if   FFMPEG_LIBS_COMPATIBLE([60008100], [62011100], [62003100], [9001100], [6001100]); then
+if   FFMPEG_LIBS_COMPATIBLE([61001100], [63001100], [63001100], [10001100], [7001100]); then
+    FFMPEG_VERSION="9.0"
+elif   FFMPEG_LIBS_COMPATIBLE([60008100], [62011100], [62003100], [9001100], [6001100]); then
     FFMPEG_VERSION="8.0"
 elif   FFMPEG_LIBS_COMPATIBLE([59008100], [61003100], [61001100], [8001100], [5001100]); then
     FFMPEG_VERSION="7.0"
@@ -323,7 +318,7 @@ elif FFMPEG_LIBS_COMPATIBLE([56014100], [58018100], [58012100], [5001100], [3001
 else
     AC_MSG_ERROR([
 
-Unsupported ffmpeg version, most recent version supported is 8.0, oldest version supported is 4.0.
+Unsupported ffmpeg version, most recent version supported is 9.0, oldest version supported is 4.0.
 ])
 fi
 AX_EXTRACT_VERSION(FFMPEG, $FFMPEG_VERSION)
@@ -345,38 +340,10 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],[])],
 AC_LANG_POP([C++])
 
 # find projectM version
-libprojectM_PKG="libprojectM >= 1.0"
+libprojectM_PKG="projectM-4 >= 4.0"
 PKG_HAVE([libprojectM], [$libprojectM_PKG], no)
-PKG_VERSION([libprojectM], [$libprojectM_PKG])
-if [[ "$libprojectM_VERSION_MAJOR" -ge 3 ]] ; then
-	AC_MSG_FAILURE([libprojectM >= 3 not yet supported])
-fi
-if [[ "$libprojectM_VERSION_MAJOR" -eq 1 ]] && [[ "${#libprojectM_VERSION_MAJOR}" -eq 2 ]] ; then
-	# The official releases with major = 1 were 1.00, 1.01, 1.10, and 1.2.0.
-	# So 1.10 is in fact 1.1.0 and also uses 1.1 in the ChangeLog file.
-	libprojectM_VERSION_RELEASE="${libprojectM_VERSION_MINOR#?}"
-	libprojectM_VERSION_MINOR="${libprojectM_VERSION_MINOR%?}"
-fi
 AC_SUBST_DEFINE(HAVE_PROJECTM, $libprojectM_HAVE)
-# get projectM include-dir
-PKG_VALUE([libprojectM], [INCLUDEDIR], [variable=includedir], [$libprojectM_PKG], 
-          [C-Header include-dir (e.g. /usr/include)])
-# get projectM data-dir (for preset- and font-dir)
-PKG_VALUE([libprojectM], [DATADIR], [variable=pkgdatadir], [$libprojectM_PKG], 
-          [projectM data-directory for presets etc. (e.g. /usr/share/projectM)])
-# check if we need the c-wrapper
-if [[ "$libprojectM_VERSION_MAJOR" -ge 1 ]]; then
-    if [[ "$cxx_works" = yes ]] ; then
-        libprojectM_USE_CWRAPPER=yes
-        use_cxx=yes
-    else
-        AC_MSG_FAILURE([Need C++ compiler to build libprojectM wrapper])
-    fi
-else
-    libprojectM_USE_CWRAPPER=no
-fi
-AC_SUBST(USE_PROJECTM_CWRAPPER, $libprojectM_USE_CWRAPPER)
-AC_SUBST_DEFINE(USE_LOCAL_PROJECTM_PRESETS, $with_local_projectM_presets)
+PKG_VERSION([libprojectM], [$libprojectM_PKG])
 
 opencv_core_standalone=no
 opencv_imgproc_standalone=no

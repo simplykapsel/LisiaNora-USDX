@@ -1,159 +1,50 @@
-name: Build
-
+name: Windows portable
 on:
   push:
-    branches:
-      - master
+    branches: [main]
   pull_request:
-  # Run every day at 5:40.
-  schedule:
-    - cron:  '40 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
-  build_windows:
-    name: Build for Windows
+  windows:
     runs-on: windows-2022
+    timeout-minutes: 30
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-      - name: Determine version
-        run: |
-          $VNAME=$(cat VERSION | sed "s/+dev$/+dev-$(git rev-parse --short HEAD)/")
-          echo "versionName=$VNAME" >> $env:GITHUB_ENV
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+      - uses: actions/checkout@v6
         with:
-          msystem: MSYS
+          fetch-depth: 0
+      - uses: msys2/setup-msys2@v2
+        id: msys
+        with:
+          msystem: MINGW64
           update: false
           install: >-
-            autoconf-wrapper
-            automake-wrapper
-            git
-            make
-            pkgconf
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-tools
-      - name: Install Dependencies
+            autoconf-wrapper automake-wrapper git make pkgconf
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-tools
+      - name: Install Lazarus 4.8 and Free Pascal 3.2.2
+        shell: pwsh
         run: |
-          curl.exe -L --max-time 60 -o fpc-installer.exe "https://sourceforge.net/projects/freepascal/files/Win32/3.2.2/fpc-3.2.2.win32.and.win64.exe/download"
-          curl.exe -L --max-time 60 -o nsis-3.05-setup.exe "https://sourceforge.net/projects/nsis/files/NSIS%203/3.05/nsis-3.05-setup.exe/download"
-          Start-Process -FilePath ".\\fpc-installer.exe" -ArgumentList "/TYPE=full /VERYSILENT /SP- /SUPPRESSMSGBOXES /NORESTART" -Wait
-          ./nsis-3.05-setup.exe /S
-      - name: Download prebuilt DLLs
-        run: |
-          python dldlls.py
-          7z x -y usdx-dlls-x86_64.zip -ogame "*.dll"
-          7z x -y usdx-dlls-x86_64.zip -osrc "config-win.inc"
+          $url = 'https://netix.dl.sourceforge.net/project/lazarus/Lazarus%20Windows%2064%20bits/Lazarus%204.8/lazarus-4.8-fpc-3.2.2-win64.exe'
+          curl.exe --fail --location --retry 3 --max-time 600 --silent --show-error $url --output "$env:RUNNER_TEMP/lazarus.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Installer download failed: $LASTEXITCODE" }
+          $hash = (Get-FileHash "$env:RUNNER_TEMP/lazarus.exe" -Algorithm SHA256).Hash
+          if ($hash -ne 'ed25ee171d55e23cf14e0633159fdd2325efba56e186f8ab817ad3bf97d267d7') { throw 'Installer checksum mismatch' }
+          $p = Start-Process "$env:RUNNER_TEMP/lazarus.exe" -ArgumentList '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=C:\lazarus' -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "Installer failed: $($p.ExitCode)" }
+      - name: Prepare official runtime dependencies
+        shell: pwsh
         env:
-          ARTIFACT_ACCESS_TOKEN: ${{ secrets.MxeActionsReadAccessToken }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build
-        shell: msys2 {0}
-        run: |
-          export PATH="/usr/bin:/mingw64/bin:/c/FPC/3.2.2/bin:/c/FPC/3.2.2/bin/i386-win32:$PATH"
-          export MAKE="/usr/bin/make"
-          export FPCCFG="/c/FPC/3.2.2/bin/i386-win32/fpc.cfg"
-          export FPCDIR="/c/FPC/3.2.2"
-          export FPCMAKE="/c/FPC/3.2.2/bin/i386-win32/fpcmake"
-          ./autogen.sh
-          ./configure
-          make
-      - name: Create installer
-        run: |
-          del game\*.debug
-          xcopy game\*.dll installer\dependencies\dll /y
-          & 'C:\Program Files (x86)\NSIS\makensis.exe' "installer/UltraStar Deluxe.nsi"
-          mv installer\dist\UltraStar.Deluxe_*_installer.exe UltraStarDeluxe-windows-installer-${{ env.versionName }}.exe
-      - name: Upload Installer Artifact
-        uses: actions/upload-artifact@v6
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./tools/windows/prepare-runtime.ps1 -Download
+      - name: Build Windows x64
+        shell: pwsh
+        run: ./tools/windows/build.ps1 -Configuration Release -MsysRoot '${{ steps.msys.outputs.msys2-location }}'
+      - name: Package portable game
+        shell: pwsh
+        run: ./tools/windows/package.ps1
+      - uses: actions/upload-artifact@v6
         with:
-          name: UltraStarDeluxe-windows-installer-${{ env.versionName }}
-          path: UltraStarDeluxe-windows-installer-${{ env.versionName }}.exe
-          if-no-files-found: error
-      - name: Upload Portable Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: UltraStarDeluxe-windows-portable-${{ env.versionName }}
-          path: game
-          if-no-files-found: error
-
-  build_mac:
-    name: Build for MacOS (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, macos-15-intel]
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-      - name: Determine version
-        run: |
-          VNAME=$(cat VERSION | sed "s/+dev$/+dev-$(git rev-parse --short HEAD)/")
-          echo "versionName=$VNAME" >> $GITHUB_ENV
-      - name: Determine Arch
-        run: |
-          if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
-            echo "arch=x86" >> $GITHUB_ENV
-          else
-            echo "arch=ARM" >> $GITHUB_ENV
-          fi
-      - name: Install Dependencies
-        run: |
-          brew install fpc sdl2 sdl2_image automake portaudio lua ffmpeg opencv
-      - name: Generate Build Scripts
-        run: ./autogen.sh
-      - name: Configure Project
-        run: ./configure --with-opencv-cxx-api
-      - name: Build
-        run: make macos-dmg
-      - name: Rename DMG
-        run: mv UltraStarDeluxe.dmg UltraStarDeluxe-mac-${{ env.arch }}-${{ env.versionName }}.dmg
-      - name: Upload Image Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: UltraStarDeluxe-mac-${{ env.arch }}-${{ env.versionName }}
-          path: UltraStarDeluxe-mac-${{ env.arch }}-${{ env.versionName }}.dmg
-          if-no-files-found: error
-
-  build_linux:
-    name: Build for Linux
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-      - name: Determine version
-        run: |
-          VNAME=$(cat VERSION | sed "s/+dev$/+dev-$(git rev-parse --short HEAD)/")
-          echo "versionName=$VNAME" >> $GITHUB_ENV
-      - name: Cache build
-        uses: actions/cache@v5
-        with:
-          key: linux-docker-${{ hashFiles('dists/linux/dl.sh', 'dists/linux/tasks.sh', 'dists/linux/dockerenv.sh', 'dists/linux/Dockerfile.in') }}
-          path: |
-            dists/linux/prefix
-      - name: Start container builder
-        uses: docker/setup-buildx-action@v4
-      - name: Generate Dockerfile
-        run: |
-          cd dists/linux
-          ./dockerenv.sh --dockerfile > Dockerfile
-      - name: Build container
-        uses: docker/build-push-action@v7
-        with:
-          context: dists/linux
-          cache-from: type=gha
-          cache-to: type=gha,mode=max,ignore-error=true
-          load: true
-          tags: usdx/buildenv:latest
-      - name: Build
-        run: |
-          cd dists/linux
-          sed -i '/docker/s/-it\>//' dockerenv.sh
-          ./dockerenv.sh --use-existing=usdx/buildenv:latest make compress
-          mv UltraStar*.AppImage ../../UltraStarDeluxe-linux-${{ env.versionName }}.AppImage
-      - name: Upload Image Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: UltraStarDeluxe-linux-${{ env.versionName }}
-          path: UltraStarDeluxe-linux-${{ env.versionName }}.AppImage
+          name: LisiaNora-USDX-windows-x64
+          path: artifacts/*.zip
           if-no-files-found: error

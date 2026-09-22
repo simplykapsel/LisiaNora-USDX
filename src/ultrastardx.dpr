@@ -148,9 +148,9 @@ uses
   //------------------------------
   ULua           in 'lib\Lua\ULua.pas',
   ULuaUtils      in 'lua\ULuaUtils.pas',
-  ULuaGl         in 'lua\ULuaGl.pas',
+  ULuaRenderer   in 'lua\ULuaRenderer.pas',
   ULuaLog        in 'lua\ULuaLog.pas',
-  ULuaTextGL     in 'lua\ULuaTextGL.pas',
+  ULuaText       in 'lua\ULuaText.pas',
   ULuaTexture    in 'lua\ULuaTexture.pas',
   UHookableEvent in 'lua\UHookableEvent.pas',
   ULuaCore       in 'lua\ULuaCore.pas',
@@ -170,7 +170,6 @@ uses
   UMenuSelectSlide       in 'menu\UMenuSelectSlide.pas',
   UMenuWidget            in 'menu\UMenuWidget.pas',
   UMenuEqualizer         in 'menu\UMenuEqualizer.pas',
-  UDrawTexture           in 'menu\UDrawTexture.pas',
   UMenuButtonCollection  in 'menu\UMenuButtonCollection.pas',
 
   UMenuBackground        in 'menu\UMenuBackground.pas',
@@ -186,8 +185,9 @@ uses
   UConfig           in 'base\UConfig.pas',
   
   UCommon           in 'base\UCommon.pas',
+  URenderer         in 'base\URenderer.pas',
+  URenderer_OpenGL  in 'base\URenderer_OpenGL.pas',
   UGraphic          in 'base\UGraphic.pas',
-  UTexture          in 'base\UTexture.pas',
   ULanguage         in 'base\ULanguage.pas',
   UMain             in 'base\UMain.pas',
   UDraw             in 'base\UDraw.pas',
@@ -209,6 +209,7 @@ uses
   UGraphicClasses   in 'base\UGraphicClasses.pas',
   UPlaylist         in 'base\UPlaylist.pas',
   UCommandLine      in 'base\UCommandLine.pas',
+  UQueueBridge      in 'base\UQueueBridge.pas',
   URingBuffer       in 'base\URingBuffer.pas',
   USingScores       in 'base\USingScores.pas',
   USingNotes        in 'base\USingNotes.pas',
@@ -216,7 +217,7 @@ uses
   UNote             in 'base\UNote.pas',
   UBeatTimer        in 'base\UBeatTimer.pas',
 
-  TextGL            in 'base\TextGL.pas',
+  UText             in 'base\UText.pas',
   UUnicodeUtils     in 'base\UUnicodeUtils.pas',
   UUnicodeStringHelper in 'base\uunicodestringhelper',
   UFont             in 'base\UFont.pas',
@@ -322,7 +323,7 @@ uses
   UScreenEdit             in 'screens\UScreenEdit.pas',
   UScreenEditConvert      in 'screens\UScreenEditConvert.pas',
   UScreenOpen             in 'screens\UScreenOpen.pas',
-  UScreenTop5             in 'screens\UScreenTop5.pas',
+  UScreenHighScores       in 'screens\UScreenHighScores.pas',
   UScreenSongMenu         in 'screens\UScreenSongMenu.pas',
   UScreenSongJumpto       in 'screens\UScreenSongJumpto.pas',
   UScreenStatMain         in 'screens\UScreenStatMain.pas',
@@ -347,7 +348,6 @@ uses
   opencv_types            in 'lib\openCV3\opencv_types.pas',
   {$ENDIF}
 
-  UMenuStaticList in 'menu\UMenuStaticList.pas',
   UWebcam                 in 'base\UWebcam.pas',
 
   UDLLManager             in 'base\UDLLManager.pas',
