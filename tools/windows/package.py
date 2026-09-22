@@ -14,6 +14,6 @@ with ZipFile(destination,'w',ZIP_DEFLATED,compresslevel=5) as archive:
         if file.name.lower()=='ultrastardx-lazarus.exe': continue
         if file.name.lower()=='config.ini' or any(suffix in file.name.lower() for suffix in ('.db-', '.sqlite-', '.sqlite3')) or file.suffix.lower() in {'.db','.sqlite','.log','.debug'}: continue
         archive.write(file,rel.as_posix())
-    for name in ['COPYING','COPYRIGHT.txt','LICENSE','README.md']:
+    for name in ['COPYING','COPYRIGHT.txt','LICENSE','README.md','QUEUE-BRIDGE.md']:
         if (root/name).is_file(): archive.write(root/name,name)
 print(f'Portable package (without songs, local settings and scores): {destination}')

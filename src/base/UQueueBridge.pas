@@ -46,6 +46,12 @@ begin
     Data.Add('sessionId', SessionID);
     Data.Add('updatedAt', DateTimeToUnix(Now, false));
     Data.Add('ready', Ready);
+    Data.Add('playersConfigured', Assigned(ScreenSing));
+    if Display.CurrentScreen = @ScreenMain then Data.Add('screen', 'main')
+    else if Display.CurrentScreen = @ScreenSong then Data.Add('screen', 'song')
+    else if Display.CurrentScreen = @ScreenName then Data.Add('screen', 'players')
+    else if Display.CurrentScreen = @ScreenSing then Data.Add('screen', 'sing')
+    else Data.Add('screen', 'other');
     Data.Add('id', LastID);
     Data.Add('result', LastResult);
     if (Display.CurrentScreen = @ScreenSong) and
@@ -103,6 +109,7 @@ begin
   ScreenSong.ShowCatTLCustom('Lisia Nora');
   ScreenSong.SkipTo(CatSongs.VisibleIndex(TargetIndex), TargetIndex, CatSongs.VisibleSongs);
   CatSongs.Selected := TargetIndex;
+  ScreenSong.QueueSelectionNeedsPlayers := true;
   ScreenSong.SongCurrent := ScreenSong.SongTarget;
   ScreenSong.SetScroll;
   ScreenSong.SetScrollRefresh;

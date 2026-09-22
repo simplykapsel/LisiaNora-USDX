@@ -1,7 +1,10 @@
 # Połączenie z UltraStar Queue
 
 W panelu administratora aplikacji jest osobny przycisk **Wybierz**.
-Zaznacza konkretny plik piosenki w grze. Start występu i licznik kolejki są oddzielne.
+Zaznacza konkretny plik piosenki w grze. Po uruchomieniu tak wybranej piosenki
+gra zawsze pokazuje standardowy ekran graczy i trudności. Dopiero zatwierdzenie
+tworzy ekran śpiewania. Escape wraca do wyboru utworu i zachowuje ten wymóg.
+Start występu i licznik kolejki są oddzielne.
 
 ## Uruchomienie
 
@@ -49,7 +52,7 @@ SHA-256 pliku z katalogiem webowym i ogranicza ścieżkę do biblioteki piosenek
 Gra nie ładuje nowych plików z polecenia.
 
 `status.json` zawiera `protocol`, `sessionId`, `updatedAt` (Unix, sekundy), `ready`,
-`id`, `result` oraz opcjonalnie `selectedFile` aktualnie zaznaczonej piosenki.
+`id`, `result`, `screen`, `playersConfigured` oraz opcjonalnie `selectedFile` aktualnie zaznaczonej piosenki.
 Status aktualizuje się co sekundę oraz po zakończeniu polecenia.
 Wyniki gry: `selected`, `busy`, `not_found`, `expired`, `error`.
 Program Windows może dodatkowo zgłosić `stale_file` lub `game_offline`.
@@ -71,3 +74,17 @@ Bieżący filtr/kategoria/playlistę zastępuje widok wszystkich piosenek.
 
 Testy nie obejmują pełnego śpiewania do mikrofonu ani każdego układu menu.
 Domyślny układ Roulette został sprawdzony na rzeczywistej grze.
+
+## Regresja wyboru graczy
+
+```powershell
+.\tools\windows\build.ps1 -Configuration Debug
+.\tools\windows\smoke-player-flow.ps1 -Song 'D:\UltraStar Deluxe\songs\nowe\Hiroshi Kitadani - We are! (TV)\Hiroshi Kitadani - We are! (TV).txt'
+```
+
+Test uruchamia prawdziwą grę z osobną konfiguracją i wynikami w `.local`, a przez
+GDB wywołuje standardowe akcje menu. Sprawdza: zaznaczenie → ekran graczy → Escape
+→ ponowne uruchomienie → zatwierdzenie graczy/trudności → ekran śpiewania.
+Następnie wysyła polecenie wyboru podczas śpiewania i sprawdza odrzucenie `busy`.
+W ten sposób sprawdza też inicjalizację `ScreenSing`, której brak powodował
+zgłoszony błąd `Object reference is Nil` w `UDisplay.Draw`.
