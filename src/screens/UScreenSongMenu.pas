@@ -896,9 +896,9 @@ begin
 
                 //Do the Action that is specified in Ini
                 case Ini.OnSongClick of
-                  0: FadeTo(@ScreenSing);
+                  0: ScreenSong.StartPreparedSong;
                   1: ScreenSong.SelectPlayers;
-                  2: FadeTo(@ScreenSing);
+                  2: ScreenSong.StartPreparedSong;
                 end;
               end
               else

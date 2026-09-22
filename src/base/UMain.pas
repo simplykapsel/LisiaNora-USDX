@@ -70,6 +70,7 @@ implementation
 uses
   math,
   UCommandLine,
+  UQueueBridge,
   UCommon,
   UConfig,
   UDataBase,
@@ -320,6 +321,7 @@ begin
 
       // keyboard/mouse/joystick events
       CheckEvents;
+      PollQueueBridge;
 
       // display
       Done := not Display.Draw;

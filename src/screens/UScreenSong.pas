@@ -231,6 +231,8 @@ type
 
       NextRandomSearchIdx: cardinal;
 
+      QueueSelectionNeedsPlayers: boolean;
+
       constructor Create; override;
       procedure SetScroll;
       procedure SetScrollRefresh;
@@ -289,6 +291,7 @@ type
       function PermitCategory(ID: integer): boolean;
 
       //procedures for Menu
+      procedure StartPreparedSong;
       procedure StartSong;
       procedure OpenEditor;
       procedure DoJoker(Team: integer; SDL_ModState: Word);
@@ -1295,9 +1298,9 @@ begin
 
                   //Do the Action that is specified in Ini
                   case Ini.OnSongClick of
-                    0: FadeTo(@ScreenSing);
+                    0: StartPreparedSong;
                     1: SelectPlayers;
-                    2: FadeTo(@ScreenSing);
+                    2: StartPreparedSong;
                   end;
                 end
                 else
@@ -4183,6 +4186,17 @@ end;
 
 //Procedures for Menu
 
+procedure TScreenSong.StartPreparedSong;
+begin
+  // ScreenSing and player-specific resources are constructed by ScreenName.
+  // A selection from the web queue must still pass through that normal setup.
+  if (Mode in [smNormal, smMedley]) and
+    (QueueSelectionNeedsPlayers or not Assigned(ScreenSing)) then
+    SelectPlayers
+  else
+    FadeTo(@ScreenSing);
+end;
+
 procedure TScreenSong.StartSong;
 begin
   CatSongs.Selected := Interaction;
@@ -4192,7 +4206,7 @@ begin
 
   StopMusicPreview();
 
-  FadeTo(@ScreenSing);
+  StartPreparedSong;
 end;
 
 procedure TScreenSong.SelectPlayers;
@@ -4384,9 +4398,9 @@ begin
 
     //TODO: how about case 2? menu for medley mode?
     case Ini.OnSongClick of
-      0: FadeTo(@ScreenSing);
+      0: StartPreparedSong;
       1: SelectPlayers;
-      2: FadeTo(@ScreenSing);
+      2: StartPreparedSong;
       {2: begin
          if (CatSongs.CatNumShow = -3) then
            ScreenSongMenu.MenuShow(SM_Playlist)
@@ -4404,9 +4418,9 @@ begin
 
       //TODO: how about case 2? menu for medley mode?
       case Ini.OnSongClick of
-        0: FadeTo(@ScreenSing);
+        0: StartPreparedSong;
         1: SelectPlayers;
-        2: FadeTo(@ScreenSing);
+        2: StartPreparedSong;
         {2: begin
           if (CatSongs.CatNumShow = -3) then
             ScreenSongMenu.MenuShow(SM_Playlist)

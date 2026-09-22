@@ -410,6 +410,7 @@ begin
 
           ScreenScore := TScreenScore.Create;
           ScreenSing  := TScreenSingController.Create;
+          ScreenSong.QueueSelectionNeedsPlayers := false;
           //
 
           AudioPlayback.PlaySound(SoundLib.Start);

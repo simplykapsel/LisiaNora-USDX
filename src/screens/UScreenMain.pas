@@ -308,6 +308,7 @@ begin
   SoundLib.StartBgMusic;
 
   ScreenSong.Mode := smNormal;
+  ScreenSong.QueueSelectionNeedsPlayers := false;
 
   if not Help.SetHelpID(ID) then
     Log.LogWarn('No Entry for Help-ID ' + ID, 'ScreenMains');

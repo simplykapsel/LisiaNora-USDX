@@ -37,7 +37,7 @@
       <local>
         <FormatVersion Value="1" />
         <WorkingDirectory Value="$(ProjPath)..\game" />
-        <CommandLineParams Value="-ConfigFile config.ini -ScoreFile Ultrastar-dev.db" />
+        <CommandLineParams Value="-ConfigFile config.ini -ScoreFile Ultrastar-dev.db -QueueBridge .queue-bridge" />
       </local>
     </RunParams>
     <RequiredPackages Count="1">
