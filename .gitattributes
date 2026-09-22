@@ -1,1 +1,2 @@
 *.pas diff=pascal
+*.sh text eol=lf

@@ -70,3 +70,9 @@ ppaslink.sh
 /usdx-dlls-i686.zip
 /game/*.dll
 /game/*.debug
+
+# Local Windows workflow
+/.local/
+/artifacts/
+/bass24.zip
+/game/*.sqlite*

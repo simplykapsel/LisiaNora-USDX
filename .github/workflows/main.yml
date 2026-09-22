@@ -1,225 +1,49 @@
-name: Build
-
+name: Windows portable
 on:
   push:
-    branches:
-      - master
+    branches: [main]
   pull_request:
-  # Run every day at 5:40.
-  schedule:
-    - cron:  '40 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
-  build_windows:
-    name: Build for Windows
+  windows:
     runs-on: windows-2022
+    timeout-minutes: 30
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-      - name: Determine version
-        run: |
-          $VNAME=$(cat VERSION | sed "s/+dev$/+dev-$(git rev-parse --short HEAD)/")
-          echo "versionName=$VNAME" >> $env:GITHUB_ENV
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+      - uses: actions/checkout@v6
         with:
-          msystem: MSYS
+          fetch-depth: 0
+      - uses: msys2/setup-msys2@v2
+        id: msys
+        with:
+          msystem: MINGW64
           update: false
           install: >-
-            autoconf-wrapper
-            automake-wrapper
-            git
-            make
-            pkgconf
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-tools
-      - name: Install Dependencies
+            autoconf-wrapper automake-wrapper git make pkgconf
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-tools
+      - name: Install Lazarus 4.8 and Free Pascal 3.2.2
+        shell: pwsh
         run: |
-          curl.exe -L --max-time 60 -o fpc-installer.exe "https://sourceforge.net/projects/freepascal/files/Win32/3.2.2/fpc-3.2.2.win32.and.win64.exe/download"
-          curl.exe -L --max-time 60 -o nsis-3.05-setup.exe "https://sourceforge.net/projects/nsis/files/NSIS%203/3.05/nsis-3.05-setup.exe/download"
-          Start-Process -FilePath ".\\fpc-installer.exe" -ArgumentList "/TYPE=full /VERYSILENT /SP- /SUPPRESSMSGBOXES /NORESTART" -Wait
-          ./nsis-3.05-setup.exe /S
-      - name: Download prebuilt DLLs
-        run: |
-          python dldlls.py
-          7z x -y usdx-dlls-x86_64.zip -ogame "*.dll"
-          7z x -y usdx-dlls-x86_64.zip -osrc "config-win.inc"
+          $url = 'https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%204.8/lazarus-4.8-fpc-3.2.2-win64.exe/download'
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP/lazarus.exe"
+          $hash = (Get-FileHash "$env:RUNNER_TEMP/lazarus.exe" -Algorithm SHA256).Hash
+          if ($hash -ne 'ed25ee171d55e23cf14e0633159fdd2325efba56e186f8ab817ad3bf97d267d7') { throw 'Installer checksum mismatch' }
+          $p = Start-Process "$env:RUNNER_TEMP/lazarus.exe" -ArgumentList '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=C:\lazarus' -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "Installer failed: $($p.ExitCode)" }
+      - name: Prepare official runtime dependencies
+        shell: pwsh
         env:
-          ARTIFACT_ACCESS_TOKEN: ${{ secrets.MxeActionsReadAccessToken }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build
-        shell: msys2 {0}
-        run: |
-          export PATH="/usr/bin:/mingw64/bin:/c/FPC/3.2.2/bin:/c/FPC/3.2.2/bin/i386-win32:$PATH"
-          export MAKE="/usr/bin/make"
-          export FPCCFG="/c/FPC/3.2.2/bin/i386-win32/fpc.cfg"
-          export FPCDIR="/c/FPC/3.2.2"
-          export FPCMAKE="/c/FPC/3.2.2/bin/i386-win32/fpcmake"
-          ./autogen.sh
-          ./configure
-          make
-      - name: Create installer
-        run: |
-          del game\*.debug
-          xcopy game\*.dll installer\dependencies\dll /y
-          & 'C:\Program Files (x86)\NSIS\makensis.exe' "installer/UltraStar Deluxe.nsi"
-          mv installer\dist\UltraStar.Deluxe_*_installer.exe UltraStarDeluxe-windows-installer-${{ env.versionName }}.exe
-      - name: Upload Installer Artifact
-        uses: actions/upload-artifact@v6
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./tools/windows/prepare-runtime.ps1 -Download
+      - name: Build Windows x64
+        shell: pwsh
+        run: ./tools/windows/build.ps1 -Configuration Release -MsysRoot '${{ steps.msys.outputs.msys2-location }}'
+      - name: Package portable game
+        shell: pwsh
+        run: ./tools/windows/package.ps1
+      - uses: actions/upload-artifact@v6
         with:
-          name: UltraStarDeluxe-windows-installer-${{ env.versionName }}
-          path: UltraStarDeluxe-windows-installer-${{ env.versionName }}.exe
-          if-no-files-found: error
-      - name: Upload Portable Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: UltraStarDeluxe-windows-portable-${{ env.versionName }}
-          path: game
-          if-no-files-found: error
-
-  build_mac:
-    name: Build for MacOS (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, macos-15-intel]
-    env:
-      SDL2_VERSION: 2.32.10
-      SDL2_SHA: 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165
-      SDL2_IMAGE_VERSION: 2.8.12
-      SDL2_IMAGE_SHA: 393f5efb50536ec13ca4f4affb69cc9966d3c3f969e6c5e701faddf9f9785381
-      PROJECTM_VERSION: 4.1.7
-      PROJECTM_SHA: 16e4610b4d58981f7a2351faa58d507d3f40163a7b26ba81e19aec928c66641f
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-      - name: Determine version
-        run: |
-          VNAME=$(cat VERSION | sed "s/+dev$/+dev-$(git rev-parse --short HEAD)/")
-          echo "versionName=$VNAME" >> $GITHUB_ENV
-      - name: Determine Arch
-        run: |
-          if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
-            echo "arch=x86" >> $GITHUB_ENV
-          else
-            echo "arch=ARM" >> $GITHUB_ENV
-          fi
-      - name: Install Homebrew Dependencies
-        run: |
-          brew install fpc libjpeg-turbo jpeg-xl libavif libpng libtiff webp automake portaudio lua ffmpeg opencv
-
-      # Homebrew now ships sdl2-compat instead of SDL2, so we build SDL2 ourselves instead
-      - name: Cache SDL2 and SDL2_image
-        id: cache-sdl2
-        uses: actions/cache@v6
-        with:
-          path: ${{github.workspace}}/sdl2
-          key: sdl2-${{matrix.os}}-${{env.SDL2_VERSION}}-${{env.SDL2_IMAGE_VERSION}}
-      - name: Build SDL2 and SDL2_image
-        if: steps.cache-sdl2.outputs.cache-hit != 'true'
-        run: |
-          curl -L -O https://github.com/libsdl-org/SDL/releases/download/release-$SDL2_VERSION/SDL2-$SDL2_VERSION.tar.gz
-          echo "$SDL2_SHA SDL2-$SDL2_VERSION.tar.gz" | sha256sum -c -
-          tar -xf SDL2-$SDL2_VERSION.tar.gz
-          cmake -S SDL2-$SDL2_VERSION \
-            -B SDL2-$SDL2_VERSION/build \
-            -DBUILD_SHARED_LIBS=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/sdl2 \
-            -DCMAKE_INSTALL_NAME_DIR=$GITHUB_WORKSPACE/sdl2/lib \
-            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
-          cmake --build SDL2-$SDL2_VERSION/build --target install --parallel
-          curl -L -O https://github.com/libsdl-org/SDL_image/releases/download/release-$SDL2_IMAGE_VERSION/SDL2_image-$SDL2_IMAGE_VERSION.tar.gz
-          echo "$SDL2_IMAGE_SHA SDL2_image-$SDL2_IMAGE_VERSION.tar.gz" | sha256sum -c -
-          tar -xf SDL2_image-$SDL2_IMAGE_VERSION.tar.gz
-          cmake -S SDL2_image-$SDL2_IMAGE_VERSION \
-            -B SDL2_image-$SDL2_IMAGE_VERSION/build \
-            -DBUILD_SHARED_LIBS=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/sdl2 \
-            -DCMAKE_INSTALL_NAME_DIR=$GITHUB_WORKSPACE/sdl2/lib \
-            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
-            -DSDL2_DIR=$GITHUB_WORKSPACE/sdl2/lib/cmake/SDL2
-          cmake --build SDL2_image-$SDL2_IMAGE_VERSION/build --target install --parallel
-      - name: Cache ProjectM
-        id: cache-projectm
-        uses: actions/cache@v6
-        with:
-          path: ${{github.workspace}}/projectm
-          key: projectm-${{matrix.os}}-${{env.PROJECTM_VERSION}}
-      - name: Build ProjectM
-        if: steps.cache-projectm.outputs.cache-hit != 'true'
-        run: |
-          curl -L -O https://github.com/projectM-visualizer/projectm/releases/download/v$PROJECTM_VERSION/libprojectM-$PROJECTM_VERSION.tar.gz
-          echo "$PROJECTM_SHA libprojectM-$PROJECTM_VERSION.tar.gz" | sha256sum -c -
-          tar -xf libprojectM-$PROJECTM_VERSION.tar.gz
-          cmake -S libprojectM-$PROJECTM_VERSION \
-            -B libprojectM-$PROJECTM_VERSION/build \
-            -DENABLE_PLAYLIST=OFF \
-            -DBUILD_SHARED_LIBS=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/projectm \
-            -DCMAKE_INSTALL_NAME_DIR=$GITHUB_WORKSPACE/projectm/lib \
-            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
-          cmake --build libprojectM-$PROJECTM_VERSION/build --target install --parallel
-      - name: Generate Build Scripts
-        run: ./autogen.sh
-      - name: Configure Project
-        run: |
-          PKG_CONFIG_PATH=$GITHUB_WORKSPACE/sdl2/lib/pkgconfig \
-          libprojectM_VERSION=$PROJECTM_VERSION \
-          LIBS=-L$GITHUB_WORKSPACE/projectm/lib \
-          ./configure --with-opencv-cxx-api --with-libprojectM=nocheck
-      - name: Build
-        run: make macos-dmg
-      - name: Rename DMG
-        run: mv UltraStarDeluxe.dmg UltraStarDeluxe-mac-${{ env.arch }}-${{ env.versionName }}.dmg
-      - name: Upload Image Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: UltraStarDeluxe-mac-${{ env.arch }}-${{ env.versionName }}
-          path: UltraStarDeluxe-mac-${{ env.arch }}-${{ env.versionName }}.dmg
-          if-no-files-found: error
-
-  build_linux:
-    name: Build for Linux
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-      - name: Determine version
-        run: |
-          VNAME=$(cat VERSION | sed "s/+dev$/+dev-$(git rev-parse --short HEAD)/")
-          echo "versionName=$VNAME" >> $GITHUB_ENV
-      - name: Cache build
-        uses: actions/cache@v5
-        with:
-          key: linux-docker-${{ hashFiles('dists/linux/dl.sh', 'dists/linux/tasks.sh', 'dists/linux/dockerenv.sh', 'dists/linux/Dockerfile.in') }}
-          path: |
-            dists/linux/prefix
-      - name: Start container builder
-        uses: docker/setup-buildx-action@v4
-      - name: Generate Dockerfile
-        run: |
-          cd dists/linux
-          ./dockerenv.sh --dockerfile > Dockerfile
-      - name: Build container
-        uses: docker/build-push-action@v7
-        with:
-          context: dists/linux
-          cache-from: type=gha
-          cache-to: type=gha,mode=max,ignore-error=true
-          load: true
-          tags: usdx/buildenv:latest
-      - name: Build
-        run: |
-          cd dists/linux
-          sed -i '/docker/s/-it\>//' dockerenv.sh
-          ./dockerenv.sh --use-existing=usdx/buildenv:latest make compress
-          mv UltraStar*.AppImage ../../UltraStarDeluxe-linux-${{ env.versionName }}.AppImage
-      - name: Upload Image Artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: UltraStarDeluxe-linux-${{ env.versionName }}
-          path: UltraStarDeluxe-linux-${{ env.versionName }}.AppImage
+          name: LisiaNora-USDX-windows-x64
+          path: artifacts/*.zip
           if-no-files-found: error
