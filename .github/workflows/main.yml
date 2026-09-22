@@ -25,7 +25,7 @@ jobs:
       - name: Install Lazarus 4.8 and Free Pascal 3.2.2
         shell: pwsh
         run: |
-          $url = 'https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%204.8/lazarus-4.8-fpc-3.2.2-win64.exe/download'
+          $url = 'https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%2064%20bits/Lazarus%204.8/lazarus-4.8-fpc-3.2.2-win64.exe'
           Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP/lazarus.exe"
           $hash = (Get-FileHash "$env:RUNNER_TEMP/lazarus.exe" -Algorithm SHA256).Hash
           if ($hash -ne 'ed25ee171d55e23cf14e0633159fdd2325efba56e186f8ab817ad3bf97d267d7') { throw 'Installer checksum mismatch' }
