@@ -1,9 +1,10 @@
 # Połączenie z UltraStar Queue
 
 W panelu administratora aplikacji jest osobny przycisk **Wybierz**.
-Zaznacza konkretny plik piosenki w grze. Po uruchomieniu tak wybranej piosenki
-gra zawsze pokazuje standardowy ekran graczy i trudności. Dopiero zatwierdzenie
-tworzy ekran śpiewania. Escape wraca do wyboru utworu i zachowuje ten wymóg.
+Zaznacza konkretny plik piosenki w grze. Gracze i trudność wybrani przed wejściem
+do biblioteki są zachowywani przy kolejnych wyborach z panelu. Jeśli wybór
+z panelu ominął konfigurację z menu głównego, gra poprosi o nią przed śpiewaniem.
+Escape z tego ekranu zachowuje wymóg zatwierdzenia.
 Start występu i licznik kolejki są oddzielne.
 
 ## Uruchomienie
@@ -88,3 +89,7 @@ GDB wywołuje standardowe akcje menu. Sprawdza: zaznaczenie → ekran graczy →
 Następnie wysyła polecenie wyboru podczas śpiewania i sprawdza odrzucenie `busy`.
 W ten sposób sprawdza też inicjalizację `ScreenSing`, której brak powodował
 zgłoszony błąd `Object reference is Nil` w `UDisplay.Draw`.
+
+Dodatkowy przebieg `tools/windows/smoke-player-flow.ps1 -Flow Configured`
+sprawdza standardowy wybór graczy przed biblioteką i powtarzany wybór z panelu
+bez ponownego pytania o graczy.

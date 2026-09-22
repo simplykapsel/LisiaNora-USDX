@@ -4189,7 +4189,7 @@ end;
 procedure TScreenSong.StartPreparedSong;
 begin
   // ScreenSing and player-specific resources are constructed by ScreenName.
-  // A selection from the web queue must still pass through that normal setup.
+  // Only ask when entering from the main menu or setup has not happened yet.
   if (Mode in [smNormal, smMedley]) and
     (QueueSelectionNeedsPlayers or not Assigned(ScreenSing)) then
     SelectPlayers

@@ -43,8 +43,9 @@ try:
     exchange = os.environ['USDX_TEST_EXCHANGE']
     song = os.environ['USDX_TEST_SONG']
     command_id = str(uuid.uuid4())
+    configured_flow = os.environ.get("USDX_TEST_FLOW") == "configured"
     phase = 0
-    deadline = time.time() + 35
+    deadline = time.time() + 45
 
     def pointer(name):
         result = mi('-data-evaluate-expression ' + json.dumps("*(void **)&'U_$UGRAPHIC_$$_" + name + "'"))
@@ -69,8 +70,36 @@ try:
         except (IOError, ValueError): continue
         if phase == 0 and game.get('ready') and game.get('screen') == 'main':
             assert pointer('SCREENSING') == 0, 'Fresh game unexpectedly has a singing controller'
+            if configured_flow:
+                console("call ((unsigned char (*)(void *, unsigned int, unsigned int, unsigned char)) &'USCREENMAIN$_$TSCREENMAIN_$__$$_PARSEINPUT$LONGWORD$UCS4CHAR$BOOLEAN$$BOOLEAN')(*(void **)&'U_$UGRAPHIC_$$_SCREENMAIN', 13, 0, 1)")
+                phase=20
+            else:
+                send(game, command_id, int(time.time()) + 15)
+                phase=1
+        elif phase == 20 and game.get('screen') == 'players':
+            player_key(13)
+            configured_controller = pointer('SCREENSING')
+            assert configured_controller != 0
+            phase=21
+        elif phase == 21 and game.get('screen') == 'song' and game.get('ready'):
             send(game, command_id, int(time.time()) + 15)
-            phase=1
+            phase=22
+        elif phase == 22 and game.get('id') == command_id and game.get('result') == 'selected':
+            assert pointer('SCREENSING') == configured_controller, 'Selection replaced existing players'
+            # A second remote choice in the same session must also keep the confirmed setup.
+            command_id = str(uuid.uuid4())
+            send(game, command_id, int(time.time()) + 15)
+            phase=23
+        elif phase == 23 and game.get('id') == command_id and game.get('result') == 'selected':
+            assert pointer('SCREENSING') == configured_controller
+            start_song()
+            phase=24
+        elif phase == 24 and game.get('screen') == 'players':
+            raise AssertionError('Remote selection asked again for already confirmed players')
+        elif phase == 24 and game.get('screen') == 'sing':
+            assert pointer('SCREENSING') == configured_controller, 'Player resources changed'
+            send(game, str(uuid.uuid4()), int(time.time()) + 15)
+            phase=6
         elif phase == 1 and game.get('id') == command_id and game.get('result') == 'selected':
             assert os.path.normcase(game['selectedFile']) == os.path.normcase(song)
             assert pointer('SCREENSING') == 0, 'Selection must not construct/start singing'
@@ -94,7 +123,7 @@ try:
             phase=6
         elif phase == 6 and game.get('result') == 'busy':
             assert game.get('screen') == 'sing', 'Rejected selection interrupted singing'
-            print('PASS: select -> players/difficulty -> cancel -> players/difficulty -> singing; busy command rejected.')
+            print('PASS: configured players -> repeated remote selection -> singing without another setup; busy command rejected.' if configured_flow else 'PASS: select -> players/difficulty -> cancel -> players/difficulty -> singing; busy command rejected.')
             break
     else:
         raise RuntimeError('Player flow timed out in phase ' + str(phase))

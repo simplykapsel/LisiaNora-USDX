@@ -90,6 +90,8 @@ begin
   if Display.CurrentScreen <> @ScreenSong then
   begin
     ScreenSong.Mode := smNormal;
+    // Entering from the main menu bypasses the normal player setup.
+    ScreenSong.QueueSelectionNeedsPlayers := true;
     Display.FadeTo(@ScreenSong);
     Exit;
   end;
@@ -109,7 +111,6 @@ begin
   ScreenSong.ShowCatTLCustom('Lisia Nora');
   ScreenSong.SkipTo(CatSongs.VisibleIndex(TargetIndex), TargetIndex, CatSongs.VisibleSongs);
   CatSongs.Selected := TargetIndex;
-  ScreenSong.QueueSelectionNeedsPlayers := true;
   ScreenSong.SongCurrent := ScreenSong.SongTarget;
   ScreenSong.SetScroll;
   ScreenSong.SetScrollRefresh;
