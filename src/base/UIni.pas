@@ -1235,6 +1235,8 @@ var
   PathStrings: TStringList;
   I:           integer;
 begin
+  // Keep a portable queue installation independent of old SongDir entries.
+  if Params.QueueBridge.IsSet and Params.SongPath.IsSet then Exit;
   PathStrings := TStringList.Create;
   IniFile.ReadSection('Directories', PathStrings);
 

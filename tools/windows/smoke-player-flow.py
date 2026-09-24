@@ -36,7 +36,8 @@ def stopped():
 def console(command):return mi('-interpreter-exec console '+json.dumps(command))
 try:
     console('set pagination off');console('set confirm off')
-    console('set args -ConfigFile ../.local/player-flow.ini -ScoreFile ../.local/player-flow.db -QueueBridge "'+os.environ['USDX_TEST_EXCHANGE'].replace('\\','/')+'"')
+    library_argument = ' -SongPath "' + os.environ['USDX_TEST_LIBRARY'].replace('\\', '/') + '"' if os.environ.get('USDX_TEST_LIBRARY') else ''
+    console('set args -ConfigFile ../.local/player-flow.ini -ScoreFile ../.local/player-flow.db -QueueBridge "'+os.environ['USDX_TEST_EXCHANGE'].replace('\\','/')+'"' + library_argument)
     source=(repo/'src/base/UMain.pas').read_text(encoding='utf-8').splitlines()
     number=next(i+1 for i,text in enumerate(source) if 'Delay := 1000 div MAX_FPS' in text)
     mi('-break-insert UMain.pas:'+str(number));mi('-exec-run');stopped();console('set language c')
@@ -61,10 +62,10 @@ try:
         result = mi('-data-evaluate-expression ' + json.dumps("*(int *)&'U_$UNOTE_$$_PLAYERSPLAY'"))
         return int(re.search(r'value="(\d+)', result).group(1))
 
-    def send(game, identifier, expiry):
+    def send(game, identifier, expiry, file=None):
         temporary = os.path.join(exchange, 'test-command.tmp')
         with open(temporary, 'w', encoding='utf-8') as stream:
-            json.dump(dict(protocol=1, id=identifier, sessionId=game['sessionId'], file=song, expiresAt=expiry), stream)
+            json.dump(dict(protocol=1, id=identifier, sessionId=game['sessionId'], file=file or song, expiresAt=expiry), stream)
         os.replace(temporary, os.path.join(exchange, 'command.json'))
 
     while time.time() < deadline:
@@ -77,9 +78,18 @@ try:
             if configured_flow:
                 console("call ((unsigned char (*)(void *, unsigned int, unsigned int, unsigned char)) &'USCREENMAIN$_$TSCREENMAIN_$__$$_PARSEINPUT$LONGWORD$UCS4CHAR$BOOLEAN$$BOOLEAN')(*(void **)&'U_$UGRAPHIC_$$_SCREENMAIN', 13, 0, 1)")
                 phase=20
+            elif os.environ.get('USDX_TEST_EXCLUDED_SONG'):
+                send(game, command_id, int(time.time()) + 15, os.environ['USDX_TEST_EXCLUDED_SONG'])
+                phase=31
             else:
                 send(game, command_id, int(time.time()) - 1)
                 phase=30
+        elif phase == 31 and game.get('id') == command_id:
+            assert game.get('result') == 'not_found', 'Game loaded a song outside the bridge library'
+            assert game.get('screen') == 'main'
+            command_id = str(uuid.uuid4())
+            send(game, command_id, int(time.time()) - 1)
+            phase=30
         elif phase == 30 and game.get('id') == command_id and game.get('result') == 'expired':
             assert game.get('screen') == 'main', 'Expired command opened player setup'
             command_id = str(uuid.uuid4())

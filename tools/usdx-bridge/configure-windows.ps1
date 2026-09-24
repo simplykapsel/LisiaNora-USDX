@@ -13,8 +13,10 @@ if (!$ServerUrl) { $ServerUrl = $inputConfig.serverUrl }
 if (!$SongsPath) { $SongsPath = $inputConfig.songsPath }
 $uri = [Uri]$ServerUrl
 if (!$uri.IsAbsoluteUri -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/' -or ($uri.Scheme -ne 'https' -and !($uri.Scheme -eq 'http' -and $uri.IsLoopback))) { throw 'Use an HTTPS server origin, or HTTP localhost.' }
-$songs = (Resolve-Path -LiteralPath $SongsPath).Path
-if (!(Test-Path -LiteralPath $songs -PathType Container)) { throw 'Song library does not exist.' }
+if ($SongsPath) {
+    $songs = (Resolve-Path -LiteralPath $SongsPath).Path
+    if (!(Test-Path -LiteralPath $songs -PathType Container)) { throw 'Song library does not exist.' }
+}
 $token = $inputConfig.token
 if (!$token) {
     $secret = Read-Host 'USDX_BRIDGE_TOKEN' -AsSecureString
@@ -26,7 +28,8 @@ if ($token -notmatch '^[A-Za-z0-9_-]{43,128}$') { throw 'Invalid bridge token.' 
 $Destination = [IO.Path]::GetFullPath($Destination)
 $directory = Split-Path -Parent $Destination
 New-Item -ItemType Directory -Path $directory -Force | Out-Null
-$bridgeProfile = @{serverUrl=$uri.GetLeftPart([UriPartial]::Authority);token=$token;songsPath=$songs}
+$bridgeProfile = @{serverUrl=$uri.GetLeftPart([UriPartial]::Authority);token=$token}
+if ($SongsPath) { $bridgeProfile.songsPath = $songs }
 if ($inputConfig.exchangePath) { $bridgeProfile.exchangePath = $inputConfig.exchangePath }
 $bridgeProfile | ConvertTo-Json | Set-Content -LiteralPath $Destination -Encoding UTF8
 # Limit credentials to this Windows account and SYSTEM.

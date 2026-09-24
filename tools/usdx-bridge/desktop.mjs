@@ -19,10 +19,14 @@ export async function loadDesktopConfig(configPath, executableDirectory) {
   try { input = JSON.parse((await readFile(configPath, 'utf8')).replace(/^\uFEFF/, '')); }
   catch { throw new Error('Brak poprawnego pliku bridge.json. Skonfiguruj połączenie przed uruchomieniem.'); }
   const dataDirectory = path.dirname(configPath);
-  const config = validateConfig({ ...input, exchangePath: input.exchangePath ?? path.join(dataDirectory, '.queue-bridge') });
-  await realpath(config.songsPath);
+  const config = validateConfig({ ...input,
+    songsPath: input.songsPath ?? path.join(executableDirectory, 'songs'),
+    exchangePath: input.exchangePath ?? path.join(dataDirectory, '.queue-bridge') });
   const game = path.join(executableDirectory, 'ultrastardx.exe');
   if (!(await stat(game)).isFile()) throw new Error('Brak ultrastardx.exe w katalogu aplikacji.');
+  if (input.songsPath == null) await mkdir(config.songsPath, { recursive: true });
+  config.songsPath = await realpath(config.songsPath);
+  if (!(await stat(config.songsPath)).isDirectory()) throw new Error('Biblioteka piosenek musi być katalogiem.');
   return { config, game, dataDirectory, gameConfig: path.join(dataDirectory, 'game.ini'), scores: path.join(dataDirectory, 'scores.db') };
 }
 
@@ -30,10 +34,10 @@ export async function runDesktop(settings, { signal, onConnection, launch = spaw
   const { config, game, dataDirectory, gameConfig, scores } = settings;
   await mkdir(dataDirectory, { recursive: true });
   // Never replace microphone, player or display settings after the first launch.
-  try { await writeFile(gameConfig, '[Game]\nLanguage=Polish\n[Directories]\nSongDir1=' + config.songsPath + '\n', { flag: 'wx' }); }
+  try { await writeFile(gameConfig, '[Game]\nLanguage=Polish\n', { flag: 'wx' }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
   const abort = new AbortController();
-  const child = launch(game, ['-ConfigFile', gameConfig, '-ScoreFile', scores, '-QueueBridge', config.exchangePath], {
+  const child = launch(game, ['-ConfigFile', gameConfig, '-ScoreFile', scores, '-QueueBridge', config.exchangePath, '-SongPath', config.songsPath], {
     cwd: path.dirname(game), stdio: 'ignore', windowsHide: false,
   });
   const exited = new Promise((resolve, reject) => {

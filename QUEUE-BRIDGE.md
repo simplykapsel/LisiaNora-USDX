@@ -2,6 +2,8 @@
 
 Uruchomienie gry: `ultrastardx.exe -QueueBridge <katalog>`. Bez tego argumentu integracja jest wyłączona. Produkcyjny launcher i profile NAS/VPS: [WINDOWS.md](WINDOWS.md).
 
+Launcher dodaje `-SongPath <biblioteka bridge>`. Przy obu argumentach gra ładuje wyłącznie wskazaną bibliotekę, bez dodatkowych domyślnych folderów i wpisów `SongDir` z konfiguracji. Domyślnie jest to `songs` obok EXE; `songsPath` w profilu pozwala wybrać katalog zewnętrzny. Samo `-SongPath` bez integracji zachowuje standardowe zachowanie USDX (dodaje katalog).
+
 ## Wymiana plików
 
 Jeden bridge na katalog. Zapis przez plik tymczasowy i zmianę nazwy. UTF-8, JSON, maksymalnie 16 KiB polecenia. Gra odczytuje polecenia na głównym wątku co 100 ms; status zapisuje co sekundę i po wyniku.

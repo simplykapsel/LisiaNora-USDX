@@ -1,10 +1,12 @@
-param([ValidateSet('Fresh','Configured')][string]$Flow = 'Fresh', [string]$Song = 'D:\UltraStar Deluxe\songs\nowe\Hiroshi Kitadani - We are! (TV)\Hiroshi Kitadani - We are! (TV).txt', [string]$Python = 'python')
+param([ValidateSet('Fresh','Configured')][string]$Flow = 'Fresh', [string]$Song = 'D:\UltraStar Deluxe\songs\nowe\Hiroshi Kitadani - We are! (TV)\Hiroshi Kitadani - We are! (TV).txt', [string]$Python = 'python', [string]$LibraryPath, [string]$ExcludedSong)
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if (!(Test-Path -LiteralPath $Song)) { throw 'Choose an existing song loaded by the development game.' }
 $local = Join-Path $repo '.local'
 $env:USDX_TEST_FLOW = $Flow.ToLower()
 $env:USDX_TEST_SONG = [IO.Path]::GetFullPath($Song)
+$env:USDX_TEST_LIBRARY = $LibraryPath
+$env:USDX_TEST_EXCLUDED_SONG = $ExcludedSong
 $env:USDX_TEST_EXCHANGE = Join-Path $local ('player-flow-' + [guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $env:USDX_TEST_EXCHANGE | Out-Null
 Copy-Item -LiteralPath (Join-Path $repo 'game\config.ini') -Destination (Join-Path $local 'player-flow.ini') -Force

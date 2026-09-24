@@ -45,6 +45,8 @@ await cp(game, output, { recursive: true, filter: source => {
   return !parts.some(part => excluded.has(part.toLowerCase())) && name !== 'config.ini' && name !== 'game.ini' && !/^bridge.*\.json$/i.test(name) && !['ultrastardx-lazarus.exe', 'lisianora.exe', 'usdx-bridge.exe'].includes(name)
     && !/\.(db|sqlite|sqlite3)(-|$)|\.(log|debug)$/i.test(name);
 } });
+await mkdir(path.join(output, 'songs'));
+await writeFile(path.join(output, 'songs', 'README.md'), '# Piosenki\n\nUmieść tutaj foldery piosenek UltraStar (TXT, audio i pozostałe pliki).\nGra i bridge domyślnie korzystają z tego katalogu.\nOpcjonalne songsPath w bridge.json wybiera bibliotekę w innym miejscu.\n');
 for (const name of ['COPYING', 'COPYRIGHT.txt', 'LICENSE', 'DEVELOPMENT-WINDOWS.md', 'QUEUE-BRIDGE.md']) { try { await copyFile(path.join(gameRepo, name), path.join(output, name)); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
 const license = await fetch('https://raw.githubusercontent.com/nodejs/node/' + process.version + '/LICENSE');
 if (!license.ok) throw new Error('Cannot obtain license for bundled Node.js version.');
