@@ -57,6 +57,7 @@ Projekt Lazarusa: `src/ultrastardx-queue-win64.lpi`. Build: `tools/windows/lazar
 .\tools\windows\smoke-debug.ps1
 .\tools\windows\smoke-player-flow.ps1 -Flow Fresh
 .\tools\windows\smoke-player-flow.ps1 -Flow Configured
+.\tools\windows\smoke-player-flow.ps1 -Flow Playback -Song '<pełna ścieżka TXT>'
 ```
 
 `npm ci` i `npm test` uruchamiają testy klienta bridge.
@@ -64,6 +65,8 @@ Projekt Lazarusa: `src/ultrastardx-queue-win64.lpi`. Build: `tools/windows/lazar
 Testy graczy używają osobnej konfiguracji, wyników i wymiany w `.local`. `Fresh` sprawdza ekran graczy przed pokazaniem piosenki, oczekiwanie dłuższe niż termin dostarczenia polecenia, anulowanie i ponowny wybór. `Configured` sprawdza zachowanie zatwierdzonych graczy przy kolejnych wyborach. Oba sprawdzają blokadę wyboru podczas śpiewania. Parametr `-Python` pozwala podać ścieżkę interpretera.
 
 `-LibraryPath` testuje bibliotekę przekazaną przez launcher. Z `-ExcludedSong` wskazującym piosenkę ze starej biblioteki profilowej test `Fresh` sprawdza też, że gra jej nie ładuje.
+
+`Playback` sprawdza zdalny Start i Cofnij Start, zachowanie piosenki/graczy, brak nowych wyników po przerwaniu oraz odrzucenie powtórzonego Start i cofnięcia starego wykonania. `Completion` oczekuje na naturalny koniec utworu i ekran wyników; używaj krótkiej testowej piosenki (poniżej 30 s), z nutami przed końcem audio. Testy wymagają Debug; profil testowy bez przypisanych mikrofonów zatwierdza ich standardowe ostrzeżenie.
 
 ## Pliki robocze
 

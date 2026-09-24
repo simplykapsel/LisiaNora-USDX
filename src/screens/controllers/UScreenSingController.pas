@@ -209,6 +209,7 @@ uses
   ULog,
   UNote,
   URecord,
+  UQueueBridge,
   UParty,
   UPathUtils,
   USong,
@@ -928,6 +929,8 @@ begin
   // start timer
   CountSkipTimeSet;
 
+  QueuePlaybackStarted;
+
 end;
 
 procedure TScreenSingController.SongError();
@@ -1591,6 +1594,9 @@ var
 
 begin
   Log.LogStatus('TScreenSingController.Finish', 'TScreenSingController.Finish');
+  // Natural completion is reported by the view before Finish. Other exits abort
+  // the take; SungToEnd only controls USDX's own score-saving policy.
+  QueuePlaybackFinished(false);
   AudioInput.CaptureStop;
   AudioPlayback.Stop;
   AudioPlayback.SetSyncSource(nil);

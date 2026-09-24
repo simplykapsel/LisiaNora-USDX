@@ -89,6 +89,31 @@ export function validateConfig(config) {
   return { ...config, serverUrl: url.origin };
 }
 
+export function canExecute(command, game) {
+  const action = command.action ?? 'select';
+  if (!game || game.sessionId !== command.sessionId) throw new Error('game_offline');
+  if (action === 'select') { if (!game.ready) throw new Error('busy'); }
+  else if (game.controlProtocol !== 2) throw new Error('unsupported');
+  else if (action === 'start') {
+    if (!game.canStart || !command.selectionId || command.selectionId !== game.selectionId) throw new Error('busy');
+  } else if (action === 'reset') {
+    if (!game.canReset || !command.performanceId || command.performanceId !== game.performanceId) throw new Error('busy');
+  } else throw new Error('unsupported');
+}
+
+export async function prepareGameCommand(config, command, resolve) {
+  canExecute(command, await gameStatus(config.exchangePath));
+  const action = command.action ?? 'select';
+  const file = action === 'reset' ? undefined : await resolve(command.sourceRelativePath, command.sourceHash);
+  const current = await gameStatus(config.exchangePath);
+  canExecute(command, current);
+  if (action === 'start' && path.relative(file, current.selectedFile ?? '') !== '') throw new Error('busy');
+  if (command.expiresAt <= Date.now()) throw new Error('expired');
+  return { protocol: action === 'select' ? 1 : 2, action, id: command.id, sessionId: command.sessionId,
+    file, selectionId: command.selectionId, performanceId: command.performanceId,
+    expiresAt: Math.floor(command.expiresAt / 1000) };
+}
+
 export async function runBridge(input, { signal, onConnection = console.info } = {}) {
   const config = validateConfig(input);
   await realpath(config.songsPath);
@@ -102,14 +127,17 @@ export async function runBridge(input, { signal, onConnection = console.info } =
       const game = await gameStatus(config.exchangePath);
       if (pending) {
         if (!game || game.sessionId !== pending.sessionId) { ack = { id: pending.id, result: 'game_offline' }; pending = null; }
-        else if (game.id === pending.id && ['selected', 'busy', 'not_found', 'expired', 'error'].includes(game.result)) {
+        else if (game.id === pending.id && ['selected', 'started', 'reset', 'busy', 'not_found', 'expired', 'error'].includes(game.result)) {
           ack = { id: pending.id, result: game.result }; pending = null;
         } else if (pending.expiresAt <= Date.now()) { ack = { id: pending.id, result: 'expired' }; pending = null; }
       }
       const response = await fetch(config.serverUrl + '/api/bridge/usdx/poll', {
         method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(4000)]) : AbortSignal.timeout(4000),
         headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ agentId, game: game ? { sessionId: game.sessionId, ready: game.ready } : null, ack }),
+        body: JSON.stringify({ agentId, game: game ? { sessionId: game.sessionId, ready: game.ready,
+          controlProtocol: game.controlProtocol, canStart: game.canStart, canReset: game.canReset,
+          awaitingPlayers: game.awaitingPlayers, selectionId: game.selectionId,
+          performanceId: game.performanceId, performanceState: game.performanceState } : null, ack }),
       });
       if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
       const { command } = await response.json();
@@ -117,20 +145,13 @@ export async function runBridge(input, { signal, onConnection = console.info } =
       if (command && command.id !== pending?.id && command.id !== ack?.id) {
         if (!game || command.sessionId !== game.sessionId) ack = { id: command.id, result: 'game_offline' };
         else if (!Number.isFinite(command.expiresAt) || command.expiresAt <= Date.now() || command.expiresAt > Date.now() + 20_000) ack = { id: command.id, result: 'expired' };
-        else if (!game.ready) ack = { id: command.id, result: 'busy' };
         else {
           try {
-            const file = await resolve(command.sourceRelativePath, command.sourceHash);
-            // Recheck after disk I/O so an old selection never crosses a game restart or a deadline.
-            const current = await gameStatus(config.exchangePath);
-            if (!current || current.sessionId !== command.sessionId) throw new Error('game_offline');
-            if (!current.ready) throw new Error('busy');
-            if (command.expiresAt <= Date.now()) throw new Error('expired');
-            await atomicJson(path.join(config.exchangePath, 'command.json'), { protocol: 1, id: command.id,
-              sessionId: command.sessionId, file, expiresAt: Math.floor(command.expiresAt / 1000) });
+            const payload = await prepareGameCommand(config, command, resolve);
+            await atomicJson(path.join(config.exchangePath, 'command.json'), payload);
             pending = command;
           } catch (error) {
-            const result = ['not_found', 'stale_file', 'game_offline', 'busy', 'expired'].includes(error.message) ? error.message : 'error';
+            const result = ['not_found', 'stale_file', 'game_offline', 'busy', 'expired', 'unsupported'].includes(error.message) ? error.message : 'error';
             ack = { id: command.id, result };
           }
         }

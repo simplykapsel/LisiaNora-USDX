@@ -217,6 +217,7 @@ var
 implementation
 
 uses
+  UQueueBridge,
   Classes,
   Math,
   UDatabase,
@@ -949,6 +950,7 @@ begin
     begin
       if (not ScreenSing.FadeOut) and (Screens=1) or (ScreenAct=2) then
       begin
+        QueuePlaybackFinished(not ScreenSing.Settings.Finish);
         ScreenSing.Finish;
       end;
     end;

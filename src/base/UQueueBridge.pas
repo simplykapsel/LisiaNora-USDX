@@ -5,6 +5,8 @@ interface
 procedure PollQueueBridge;
 procedure ShowQueueSongAfterPlayers;
 procedure CancelQueueSongAfterPlayers;
+procedure QueuePlaybackStarted;
+procedure QueuePlaybackFinished(Completed: boolean);
 implementation
 uses Classes, SysUtils, DateUtils, fpjson, jsonparser,
   UCommandLine, UPath, UDisplay, UGraphic, USong, USongs, UPlaylist, ULog, UIni, UNote;
@@ -16,15 +18,45 @@ var
   PendingFile: UTF8String;
   PendingExpiry: Int64;
   PlayerSetupFile: UTF8String;
+  SelectionID, PerformanceID, PerformanceState, PendingAction: string;
+  SelectionFile: UTF8String;
+  RecentIDs, RecentResults: array[0..63] of string;
+  RecentIndex: integer = 0;
+
+function SelectedFile: IPath;
+begin
+  Result := PATH_NONE;
+  if (ScreenSong.Interaction >= 0) and (ScreenSong.Interaction < Length(CatSongs.Song)) and
+    not CatSongs.Song[ScreenSong.Interaction].Main then
+    Result := CatSongs.Song[ScreenSong.Interaction].Path.Append(CatSongs.Song[ScreenSong.Interaction].FileName).GetAbsolutePath;
+end;
+
+function NoPopup: boolean;
+begin
+  Result := not ScreenPopupError.Visible and not ScreenPopupInfo.Visible and
+    not ScreenPopupCheck.Visible and not ScreenPopupInsertUser.Visible and
+    not ScreenPopupHelp.Visible and not ScreenSongMenu.Visible and not ScreenSongJumpto.Visible;
+end;
 
 function Ready: boolean;
 begin
-  Result := (PlayerSetupFile = '') and (Display.NextScreen = nil) and
+  Result := NoPopup and (PlayerSetupFile = '') and (Display.NextScreen = nil) and
     ((Display.CurrentScreen = @ScreenMain) or
-     ((Display.CurrentScreen = @ScreenSong) and (ScreenSong.Mode = smNormal))) and
-    not ScreenPopupError.Visible and not ScreenPopupInfo.Visible and
-    not ScreenPopupCheck.Visible and not ScreenPopupInsertUser.Visible and
-    not ScreenSongMenu.Visible and not ScreenSongJumpto.Visible;
+     ((Display.CurrentScreen = @ScreenSong) and (ScreenSong.Mode = smNormal)));
+end;
+
+function CanStart: boolean;
+begin
+  Result := Ready and (Display.CurrentScreen = @ScreenSong) and
+    Assigned(ScreenSing) and not ScreenSong.QueueSelectionNeedsPlayers and
+    (SelectionID <> '') and SelectedFile.Equals(Path(SelectionFile).GetAbsolutePath, {$IFDEF MSWINDOWS}true{$ELSE}false{$ENDIF});
+end;
+
+function CanReset: boolean;
+begin
+  Result := NoPopup and (Display.NextScreen = nil) and (Display.CurrentScreen = @ScreenSing) and
+    (ScreenSong.Mode = smNormal) and (PerformanceID <> '') and
+    (PerformanceState = 'singing') and not ScreenSing.FadeOut;
 end;
 
 function ReadCommand: TJSONObject;
@@ -46,11 +78,17 @@ begin
   Data := TJSONObject.Create;
   try
     Data.Add('protocol', 1);
+    Data.Add('controlProtocol', 2);
     Data.Add('sessionId', SessionID);
     Data.Add('updatedAt', DateTimeToUnix(Now, false));
     Data.Add('ready', Ready);
     Data.Add('playersConfigured', Assigned(ScreenSing));
     Data.Add('awaitingPlayers', PlayerSetupFile <> '');
+    Data.Add('selectionId', SelectionID);
+    Data.Add('performanceId', PerformanceID);
+    Data.Add('performanceState', PerformanceState);
+    Data.Add('canStart', CanStart);
+    Data.Add('canReset', CanReset);
     if Display.CurrentScreen = @ScreenMain then Data.Add('screen', 'main')
     else if Display.CurrentScreen = @ScreenSong then Data.Add('screen', 'song')
     else if Display.CurrentScreen = @ScreenName then Data.Add('screen', 'players')
@@ -80,9 +118,28 @@ procedure Finish(const ID, Outcome: string);
 begin
   LastID := ID;
   LastResult := Outcome;
+  RecentIDs[RecentIndex] := ID;
+  RecentResults[RecentIndex] := Outcome;
+  RecentIndex := (RecentIndex + 1) mod Length(RecentIDs);
   PendingID := '';
+  PendingAction := '';
   LastStatus := 0;
-  Log.LogStatus('Queue selection: ' + Outcome, 'QueueBridge');
+  Log.LogStatus('Queue command: ' + Outcome, 'QueueBridge');
+end;
+
+function ReplayResult(const ID: string): boolean;
+var I: integer;
+begin
+  Result := false;
+  for I := 0 to High(RecentIDs) do
+    if RecentIDs[I] = ID then
+    begin
+      LastID := ID;
+      LastResult := RecentResults[I];
+      LastStatus := 0;
+      Result := true;
+      Exit;
+    end;
 end;
 
 function FindSong(const FileName: UTF8String): integer;
@@ -117,6 +174,8 @@ end;
 procedure CancelQueueSongAfterPlayers;
 begin
   PlayerSetupFile := '';
+  SelectionID := '';
+  SelectionFile := '';
   LastStatus := 0;
 end;
 
@@ -126,7 +185,8 @@ begin
   if PlayerSetupFile = '' then Exit;
   if not Assigned(ScreenSing) or ScreenSong.QueueSelectionNeedsPlayers then Exit;
   TargetIndex := FindSong(PlayerSetupFile);
-  CancelQueueSongAfterPlayers;
+  PlayerSetupFile := '';
+  LastStatus := 0;
   if TargetIndex >= 0 then HighlightSong(TargetIndex);
 end;
 
@@ -139,6 +199,8 @@ begin
   if not Ready then begin Finish(PendingID, 'busy'); Exit; end;
   TargetIndex := FindSong(PendingFile);
   if TargetIndex < 0 then begin Finish(PendingID, 'not_found'); Exit; end;
+  SelectionID := PendingID;
+  SelectionFile := PendingFile;
   if not Assigned(ScreenSing) or ScreenSong.QueueSelectionNeedsPlayers then
   begin
     // Commit the local choice before the delivery deadline, then let the user
@@ -164,8 +226,66 @@ begin
   Finish(PendingID, 'selected');
 end;
 
+procedure QueuePlaybackStarted;
+begin
+  if PerformanceState = 'starting' then PerformanceState := 'singing';
+  LastStatus := 0;
+end;
+
+procedure QueuePlaybackFinished(Completed: boolean);
+begin
+  if PerformanceState = 'singing' then
+  begin
+    if Completed then PerformanceState := 'finished' else PerformanceState := 'stopped';
+    LastStatus := 0;
+  end;
+end;
+
+procedure PollPlaybackCommand;
+begin
+  if Display.NextScreen <> nil then Exit;
+  if PendingAction = 'start' then
+  begin
+    if (PerformanceState = 'singing') and (Display.CurrentScreen = @ScreenSing) then Finish(PendingID, 'started')
+    else begin PerformanceState := 'error'; Finish(PendingID, 'error'); end;
+  end
+  else if PendingAction = 'reset' then
+  begin
+    if Display.CurrentScreen = @ScreenSong then Finish(PendingID, 'reset') else Finish(PendingID, 'error');
+  end;
+end;
+
+procedure ReadPlaybackCommand(Data: TJSONObject; const ID, Action: string);
+begin
+  if DateTimeToUnix(Now, false) >= Data.Get('expiresAt', Int64(0)) then
+  begin Finish(ID, 'expired'); Exit; end;
+  if Action = 'start' then
+  begin
+    if not CanStart or (Data.Get('selectionId', '') <> SelectionID) or
+      not SelectedFile.Equals(Path(UTF8String(Data.Get('file', ''))).GetAbsolutePath, {$IFDEF MSWINDOWS}true{$ELSE}false{$ENDIF}) then
+    begin Finish(ID, 'busy'); Exit; end;
+    PerformanceID := ID;
+    PerformanceState := 'starting';
+    PendingID := ID;
+    PendingAction := Action;
+    ScreenSong.StartSong;
+  end
+  else if Action = 'reset' then
+  begin
+    if not CanReset or (Data.Get('performanceId', '') <> PerformanceID) then
+    begin Finish(ID, 'busy'); Exit; end;
+    PendingID := ID;
+    PendingAction := Action;
+    ScreenSing.SungToEnd := false;
+    ScreenSing.FadeOut := true; // Skip the score-screen transition for this aborted take.
+    ScreenSing.Finish;
+    Display.FadeTo(@ScreenSong);
+  end
+  else Finish(ID, 'error');
+end;
+
 procedure PollQueueBridge;
-var Data: TJSONObject; ID: string; Guid: TGuid;
+var Data: TJSONObject; ID, Action: string; Guid: TGuid;
 begin
   if (Params = nil) or Params.QueueBridge.IsUnset then Exit;
   if GetTickCount64 - LastPoll < 100 then Exit;
@@ -177,7 +297,10 @@ begin
       SessionID := GUIDToString(Guid);
       Params.QueueBridge.CreateDirectory;
     end;
-    if PendingID <> '' then SelectPending
+    if PendingID <> '' then
+    begin
+      if PendingAction = '' then SelectPending else PollPlaybackCommand;
+    end
     else
     begin
       try Data := ReadCommand; except Data := nil; end;
@@ -186,7 +309,11 @@ begin
         ID := Data.Get('id', '');
         if (ID <> '') and (Length(ID) <= 64) and (ID <> LastID) then
         begin
-          if (Data.Get('protocol', 0) <> 1) or (Data.Get('sessionId', '') <> SessionID) then Finish(ID, 'expired')
+          Action := Data.Get('action', 'select');
+          if ReplayResult(ID) then begin end
+          else if (Data.Get('sessionId', '') <> SessionID) then Finish(ID, 'expired')
+          else if (Data.Get('protocol', 0) = 2) and (Action <> 'select') then ReadPlaybackCommand(Data, ID, Action)
+          else if (Data.Get('protocol', 0) <> 1) or (Action <> 'select') then Finish(ID, 'error')
           else if not Ready then Finish(ID, 'busy')
           else
           begin

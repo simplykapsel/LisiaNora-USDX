@@ -1,5 +1,5 @@
 # Drives the bundled GDB through MI; GDB itself needs no Python support.
-import json, os, time, uuid, subprocess, queue, threading, re
+import json, os, time, uuid, subprocess, queue, threading, re, sqlite3
 from pathlib import Path
 repo = Path(__file__).resolve().parents[2]
 process = subprocess.Popen([r'C:\lazarus\mingw\x86_64-win64\bin\gdb.exe', '--interpreter=mi2', '--quiet', 'ultrastardx.exe'],
@@ -45,6 +45,8 @@ try:
     song = os.environ['USDX_TEST_SONG']
     command_id = str(uuid.uuid4())
     configured_flow = os.environ.get("USDX_TEST_FLOW") == "configured"
+    completion_flow = os.environ.get("USDX_TEST_FLOW") == "completion"
+    playback_flow = os.environ.get("USDX_TEST_FLOW") in ["playback", "completion"]
     phase = 0
     deadline = time.time() + 45
 
@@ -62,10 +64,12 @@ try:
         result = mi('-data-evaluate-expression ' + json.dumps("*(int *)&'U_$UNOTE_$$_PLAYERSPLAY'"))
         return int(re.search(r'value="(\d+)', result).group(1))
 
-    def send(game, identifier, expiry, file=None):
+    def send(game, identifier, expiry, file=None, **fields):
         temporary = os.path.join(exchange, 'test-command.tmp')
         with open(temporary, 'w', encoding='utf-8') as stream:
-            json.dump(dict(protocol=1, id=identifier, sessionId=game['sessionId'], file=file or song, expiresAt=expiry), stream)
+            payload = dict(protocol=1, id=identifier, sessionId=game['sessionId'], file=file or song, expiresAt=expiry)
+            payload.update(fields)
+            json.dump(payload, stream)
         os.replace(temporary, os.path.join(exchange, 'command.json'))
 
     while time.time() < deadline:
@@ -73,6 +77,63 @@ try:
         try:
             with open(os.path.join(exchange, 'status.json'), encoding='utf-8') as stream: game=json.load(stream)
         except (IOError, ValueError): continue
+        if playback_flow:
+            def remote(action, identifier=None, **fields):
+                identifier = identifier or str(uuid.uuid4())
+                send(game, identifier, int(time.time()) + 15, protocol=2, action=action, **fields)
+                return identifier
+            if phase == 0 and game.get('ready'):
+                send(game, command_id, int(time.time()) + 15)
+                phase=1
+            elif phase == 1 and game.get('screen') == 'players':
+                assert not game.get('canStart'), 'Start was enabled before player confirmation'
+                selection_id = game['selectionId']
+                player_key(13)
+                controller_before = pointer('SCREENSING')
+                count_before = player_count()
+                phase=2
+            elif phase == 2 and game.get('canStart'):
+                scores_before = sqlite3.connect(repo/'.local/player-flow.db').execute('SELECT COUNT(*) FROM US_Scores').fetchone()[0]
+                first_start = remote('start', selectionId=selection_id)
+                phase=3
+            elif phase == 3 and game.get('id') == first_start and game.get('result') == 'started':
+                assert game['screen'] == 'sing' and game['performanceState'] == 'singing'
+                assert game['performanceId'] == first_start
+                assert player_count() == count_before and pointer('SCREENSING') == controller_before
+                # The isolated fixture has no microphones; dismiss its native warning.
+                console("call ((unsigned char (*)(void *, unsigned int, unsigned int, unsigned char)) &'USCREENPOPUP$_$TSCREENPOPUP_$__$$_PARSEINPUT$LONGWORD$UCS4CHAR$BOOLEAN$$BOOLEAN')(*(void **)&'U_$UGRAPHIC_$$_SCREENPOPUPERROR', 13, 0, 1)")
+                phase=9 if completion_flow else 31
+            elif phase == 9 and game.get('performanceState') == 'finished' and game.get('screen') == 'other':
+                assert game['performanceId'] == first_start and game['screen'] == 'other'
+                print('PASS: remote Start -> natural song end -> score screen and finished status.')
+                break
+            elif phase == 31 and game.get('canReset'):
+                reset_id = remote('reset', performanceId=first_start)
+                phase=4
+            elif phase == 4 and game.get('id') == reset_id and game.get('result') == 'reset':
+                assert game['screen'] == 'song' and game['performanceState'] == 'stopped' and game['canStart'], game
+                assert os.path.normcase(game['selectedFile']) == os.path.normcase(song)
+                assert sqlite3.connect(repo/'.local/player-flow.db').execute('SELECT COUNT(*) FROM US_Scores').fetchone()[0] == scores_before
+                remote('start', first_start, selectionId=selection_id) # Replay must not start a new take.
+                phase=5
+            elif phase == 5 and game.get('id') == first_start:
+                assert game['screen'] == 'song' and game['performanceState'] == 'stopped'
+                second_start = remote('start', selectionId=selection_id)
+                phase=6
+            elif phase == 6 and game.get('id') == second_start and game.get('result') == 'started':
+                stale_reset = remote('reset', performanceId=first_start)
+                phase=7
+            elif phase == 7 and game.get('id') == stale_reset:
+                assert game['result'] == 'busy' and game['screen'] == 'sing' and game['performanceId'] == second_start
+                reset_id = remote('reset', performanceId=second_start)
+                phase=8
+            elif phase == 8 and game.get('id') == reset_id and game.get('result') == 'reset':
+                assert game['screen'] == 'song' and game['canStart']
+                assert pointer('SCREENSING') == controller_before and player_count() == count_before
+                assert sqlite3.connect(repo/'.local/player-flow.db').execute('SELECT COUNT(*) FROM US_Scores').fetchone()[0] == scores_before
+                print('PASS: players -> remote Start -> singing -> remote Reset -> same song/players, no scores -> duplicate Start ignored -> new take -> stale Reset rejected -> Reset.')
+                break
+            continue
         if phase == 0 and game.get('ready') and game.get('screen') == 'main':
             assert pointer('SCREENSING') == 0, 'Fresh game unexpectedly has a singing controller'
             if configured_flow:

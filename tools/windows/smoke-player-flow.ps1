@@ -1,4 +1,4 @@
-param([ValidateSet('Fresh','Configured')][string]$Flow = 'Fresh', [string]$Song = 'D:\UltraStar Deluxe\songs\nowe\Hiroshi Kitadani - We are! (TV)\Hiroshi Kitadani - We are! (TV).txt', [string]$Python = 'python', [string]$LibraryPath, [string]$ExcludedSong)
+param([ValidateSet('Fresh','Configured','Playback','Completion')][string]$Flow = 'Fresh', [string]$Song = 'D:\UltraStar Deluxe\songs\nowe\Hiroshi Kitadani - We are! (TV)\Hiroshi Kitadani - We are! (TV).txt', [string]$Python = 'python', [string]$LibraryPath, [string]$ExcludedSong)
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if (!(Test-Path -LiteralPath $Song)) { throw 'Choose an existing song loaded by the development game.' }
@@ -16,4 +16,4 @@ $script = Join-Path $PSScriptRoot 'smoke-player-flow.py'
 $proc = Start-Process -FilePath $pythonExecutable -WorkingDirectory $repo -ArgumentList "`"$script`"" -WindowStyle Hidden -PassThru -RedirectStandardOutput $log -RedirectStandardError (Join-Path $local 'player-flow-error.log')
 if (!$proc.WaitForExit(60000)) { & taskkill.exe /PID $proc.Id /T /F | Out-Null; throw 'Player-flow test timed out.' }
 if ($proc.ExitCode -ne 0 -or ([string](Get-Content -LiteralPath $log -Raw)) -notmatch 'PASS:') { Get-Content -LiteralPath $log -Tail 20; Get-Content (Join-Path $local 'player-flow-error.log') -Tail 12; throw 'Player-flow regression failed.' }
-Write-Host "PASS: $Flow player setup, singing and busy-game rejection."
+Get-Content -LiteralPath $log

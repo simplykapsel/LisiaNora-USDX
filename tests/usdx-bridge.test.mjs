@@ -4,9 +4,32 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, rm, realpath, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveSong, createSongResolver, validateConfig } from '../tools/usdx-bridge/bridge.mjs';
+import { resolveSong, createSongResolver, validateConfig, prepareGameCommand, canExecute } from '../tools/usdx-bridge/bridge.mjs';
 const token = 'a'.repeat(43);
 const hash = createHash('sha256').update('chart').digest('hex');
+
+test('playback targets a confirmed selection and the current take, including after a slow file check', async t => {
+  const root = await temporary(t);
+  const file = path.join(root, 'song.txt');
+  let game = { protocol: 1, controlProtocol: 2, sessionId: 'session', ready: true, canStart: true,
+    selectionId: 'selection', selectedFile: file, updatedAt: Date.now() / 1000 };
+  const status = () => writeFile(path.join(root, 'status.json'), JSON.stringify(game));
+  await status();
+  const command = { id: 'take-one', sessionId: 'session', action: 'start', selectionId: 'selection', expiresAt: Date.now() + 15000 };
+  const prepared = await prepareGameCommand({ exchangePath: root }, command, async () => file);
+  assert.equal(prepared.protocol, 2); assert.equal(prepared.file, file);
+  assert.throws(() => canExecute(command, { ...game, canStart: false }), /busy/);
+  assert.throws(() => canExecute(command, { ...game, controlProtocol: undefined }), /unsupported/);
+  await assert.rejects(prepareGameCommand({ exchangePath: root }, command, async () => {
+    game = { ...game, selectionId: 'changed-locally' }; await status(); return file;
+  }), /busy/);
+  game = { ...game, canStart: false, ready: false, canReset: true, performanceId: 'take-one' }; await status();
+  const reset = { ...command, action: 'reset', performanceId: 'take-one' };
+  assert.equal((await prepareGameCommand({ exchangePath: root }, reset, () => assert.fail('Stop must not depend on song files'))).action, 'reset');
+  assert.throws(() => canExecute({ ...reset, performanceId: 'old-take' }, game), /busy/);
+  assert.throws(() => canExecute(reset, { ...game, sessionId: 'new-session' }), /game_offline/);
+  await assert.rejects(prepareGameCommand({ exchangePath: root }, { ...reset, expiresAt: 1 }), /expired/);
+});
 
 async function temporary(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'usdx-bridge-test-'));
