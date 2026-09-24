@@ -131,6 +131,7 @@ uses
   UMain,
   UMenuButton,
   UPath,
+  UQueueBridge,
   URenderer,
   USkins,
   USongs,
@@ -347,6 +348,7 @@ begin
 
       SDLK_ESCAPE :
         begin
+          CancelQueueSongAfterPlayers;
           StopTextInput;
           Ini.SaveNames;
           AudioPlayback.PlaySound(SoundLib.Back);

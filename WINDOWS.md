@@ -19,7 +19,11 @@ Alternatywnie uruchom `configure-windows.ps1` z `-ServerUrl` i `-SongsPath`; skr
 
 Uruchom **LisiaNora.exe**. Launcher otwiera grę i utrzymuje połączenie przez bridge; zamknięcie gry kończy oba procesy. Sam `ultrastardx.exe` nie łączy się z serwerem.
 
+Pierwszy wybór piosenki z kolejki w świeżo uruchomionej grze otwiera standardowy ekran graczy. Ustaw liczbę osób, imiona i trudność, a następnie zatwierdź — gra pokaże wybraną piosenkę w bibliotece. Escape anuluje wybór i wraca do menu głównego. Kolejne wybory zachowują zatwierdzonych graczy; śpiewanie uruchamiasz osobno.
+
 `LisiaNora.exe --check` sprawdza profil, pliki gry, bibliotekę i dostępność serwera. Log: `bridge.log`. `--config <ścieżka>` wybiera inny profil NAS/VPS. Nie uruchamiaj dwóch bridge dla tego samego katalogu wymiany.
+
+Po przeniesieniu lub zmianie nazwy piosenki bridge odnajdzie brakującą ścieżkę po identycznej zawartości TXT w `songsPath`, jeśli dopasowanie jest jednoznaczne. Pierwsze takie wyszukiwanie skanuje bibliotekę. Zmiana zawartości TXT wymaga ponownego eksportu katalogu. Po zmianie plików uruchom ponownie grę, aby wczytała aktualną bibliotekę.
 
 ## Ustawienia i aktualizacja
 

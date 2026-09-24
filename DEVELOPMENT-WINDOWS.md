@@ -6,6 +6,18 @@ Windows x64; Lazarus 4.8 / FPC 3.2.2 (`C:\lazarus`); MSYS2 (`C:\msys64`): autoco
 
 ## Przygotowanie
 
+Bazą Lisiej Nory jest branch `release` repozytorium UltraStar-Deluxe/USDX (obecnie `2026.9.0`). Nasze dodatki rozwijamy na `main`; aktualizacje USDX pobieramy z `upstream/release`.
+
+Konfiguracja po dodaniu remote `upstream` wskazującego na `https://github.com/UltraStar-Deluxe/USDX.git`:
+
+```powershell
+git remote set-branches upstream release
+git fetch upstream
+git remote set-head upstream release
+```
+
+Aby włączyć aktualizację USDX do naszych zmian, na czystym branchu `main` wykonaj `git fetch upstream`, a następnie `git merge upstream/release` i zweryfikuj build oraz testy. Zwykłe `git pull` nadal synchronizuje nasz `main` z `origin/main`.
+
 ```powershell
 .\tools\windows\prepare-runtime.ps1 -Download
 .\tools\windows\init-dev.ps1 -SongsPath 'D:\UltraStar Deluxe\songs'
@@ -49,7 +61,7 @@ Projekt Lazarusa: `src/ultrastardx-queue-win64.lpi`. Build: `tools/windows/lazar
 
 `npm ci` i `npm test` uruchamiają testy klienta bridge.
 
-Testy graczy używają osobnej konfiguracji, wyników i wymiany w `.local`. `Fresh` sprawdza inicjalizację i anulowanie konfiguracji. `Configured` sprawdza zachowanie zatwierdzonych graczy przy kolejnych wyborach. Oba sprawdzają blokadę wyboru podczas śpiewania.
+Testy graczy używają osobnej konfiguracji, wyników i wymiany w `.local`. `Fresh` sprawdza ekran graczy przed pokazaniem piosenki, oczekiwanie dłuższe niż termin dostarczenia polecenia, anulowanie i ponowny wybór. `Configured` sprawdza zachowanie zatwierdzonych graczy przy kolejnych wyborach. Oba sprawdzają blokadę wyboru podczas śpiewania. Parametr `-Python` pozwala podać ścieżkę interpretera.
 
 ## Pliki robocze
 

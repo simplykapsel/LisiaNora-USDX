@@ -341,6 +341,7 @@ uses
   UNote,
   UParty,
   UPlaylist,
+  UQueueBridge,
   UScreenSongMenu,
   USkins,
   UUnicodeUtils,
@@ -3060,6 +3061,8 @@ begin
   isScrolling := false;
   SetJoker;
   SetStatics;
+
+  ShowQueueSongAfterPlayers;
 
   if (TSongMenuMode(Ini.SongMenu) = smList) then
   begin

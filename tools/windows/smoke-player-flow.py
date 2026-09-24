@@ -57,6 +57,10 @@ try:
     def player_key(key):
         console("call ((unsigned char (*)(void *, unsigned int, unsigned int, unsigned char)) &'USCREENNAME$_$TSCREENNAME_$__$$_PARSEINPUT$LONGWORD$UCS4CHAR$BOOLEAN$$BOOLEAN')(*(void **)&'U_$UGRAPHIC_$$_SCREENNAME', " + str(key) + ", 0, 1)")
 
+    def player_count():
+        result = mi('-data-evaluate-expression ' + json.dumps("*(int *)&'U_$UNOTE_$$_PLAYERSPLAY'"))
+        return int(re.search(r'value="(\d+)', result).group(1))
+
     def send(game, identifier, expiry):
         temporary = os.path.join(exchange, 'test-command.tmp')
         with open(temporary, 'w', encoding='utf-8') as stream:
@@ -74,8 +78,13 @@ try:
                 console("call ((unsigned char (*)(void *, unsigned int, unsigned int, unsigned char)) &'USCREENMAIN$_$TSCREENMAIN_$__$$_PARSEINPUT$LONGWORD$UCS4CHAR$BOOLEAN$$BOOLEAN')(*(void **)&'U_$UGRAPHIC_$$_SCREENMAIN', 13, 0, 1)")
                 phase=20
             else:
-                send(game, command_id, int(time.time()) + 15)
-                phase=1
+                send(game, command_id, int(time.time()) - 1)
+                phase=30
+        elif phase == 30 and game.get('id') == command_id and game.get('result') == 'expired':
+            assert game.get('screen') == 'main', 'Expired command opened player setup'
+            command_id = str(uuid.uuid4())
+            send(game, command_id, int(time.time()) + 3)
+            phase=1
         elif phase == 20 and game.get('screen') == 'players':
             player_key(13)
             configured_controller = pointer('SCREENSING')
@@ -102,28 +111,48 @@ try:
             phase=6
         elif phase == 1 and game.get('id') == command_id and game.get('result') == 'selected':
             assert os.path.normcase(game['selectedFile']) == os.path.normcase(song)
-            assert pointer('SCREENSING') == 0, 'Selection must not construct/start singing'
-            start_song()
+            assert game.get('awaitingPlayers'), 'Fresh selection bypassed player setup'
+            assert not game.get('ready'), 'Player setup must reject another selection'
+            assert pointer('SCREENSING') == 0, 'Selection must not confirm players'
+            wait_until = time.time() + 4
             phase=2
-        elif phase == 2 and game.get('screen') == 'players':
+        elif phase == 2 and game.get('screen') == 'players' and time.time() >= wait_until:
             assert pointer('SCREENSING') == 0, 'Player confirmation was bypassed'
-            player_key(27) # Cancel: return to song, retain the requirement to confirm players.
+            assert game.get('awaitingPlayers'), 'Accepted selection expired while configuring players'
+            player_key(27) # Native cancel returns to main and forgets the local choice.
             phase=3
-        elif phase == 3 and game.get('screen') == 'song' and game.get('ready'):
-            start_song()
+        elif phase == 3 and game.get('screen') == 'main' and game.get('ready'):
+            assert not game.get('awaitingPlayers'), 'Cancelled choice was retained'
+            assert pointer('SCREENSING') == 0
+            command_id = str(uuid.uuid4())
+            send(game, command_id, int(time.time()) + 3)
+            wait_until = time.time() + 4
             phase=4
-        elif phase == 4 and game.get('screen') == 'players':
+        elif phase == 4 and game.get('screen') == 'players' and time.time() >= wait_until:
+            assert game.get('awaitingPlayers')
+            previous_count = player_count()
+            player_key(1073741904 if previous_count > 1 else 1073741903) # Left/right, away from the boundary.
             player_key(13) # Confirm through the real player/difficulty screen handler.
             assert pointer('SCREENSING') != 0, 'ScreenName did not create the singing controller'
+            assert player_count() != previous_count, 'Chosen player count was not applied'
+            confirmed_count = player_count()
             phase=5
-        elif phase == 5 and game.get('screen') == 'sing':
+        elif phase == 5 and game.get('screen') == 'song' and game.get('ready'):
+            assert os.path.normcase(game['selectedFile']) == os.path.normcase(song)
+            assert game.get('playersConfigured') and not game.get('awaitingPlayers')
+            assert player_count() == confirmed_count, 'Song screen changed the chosen player count'
+            start_song()
+            phase=7
+        elif phase == 7 and game.get('screen') == 'players':
+            raise AssertionError('Starting selected song asked for players again')
+        elif phase == 7 and game.get('screen') == 'sing':
             assert game.get('playersConfigured')
             assert not game.get('ready'), 'Singing must reject remote selection'
             send(game, str(uuid.uuid4()), int(time.time()) + 15)
             phase=6
         elif phase == 6 and game.get('result') == 'busy':
             assert game.get('screen') == 'sing', 'Rejected selection interrupted singing'
-            print('PASS: configured players -> repeated remote selection -> singing without another setup; busy command rejected.' if configured_flow else 'PASS: select -> players/difficulty -> cancel -> players/difficulty -> singing; busy command rejected.')
+            print('PASS: configured players -> repeated remote selection -> singing without another setup; busy command rejected.' if configured_flow else 'PASS: expired request rejected -> players before song -> wait past delivery deadline -> cancel -> retry -> confirm -> selected song -> singing; busy command rejected.')
             break
     else:
         raise RuntimeError('Player flow timed out in phase ' + str(phase))

@@ -1,21 +1,67 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFile, realpath, stat, mkdir, writeFile, rename, rm } from 'node:fs/promises';
+import { readFile, realpath, stat, mkdir, writeFile, rename, rm, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
-export async function resolveSong(root, relative, hash) {
+function isContained(base, file) {
+  const relative = path.relative(base, file);
+  return relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+export async function resolveSong(root, relative, hash, { findMoved } = {}) {
   if (typeof relative !== 'string' || !relative || relative.length > 2048 || relative.includes('\\')
     || relative.includes(':') || relative.includes('\0') || path.posix.isAbsolute(relative)
     || relative.split('/').some(part => !part || part === '..' || part === '.') || !/\.txt$/i.test(relative)
     || typeof hash !== 'string' || !/^[a-f0-9]{64}$/i.test(hash)) throw new Error('not_found');
   const base = await realpath(root);
   let file;
-  try { file = await realpath(path.join(base, ...relative.split('/'))); } catch { throw new Error('not_found'); }
-  const contained = path.relative(base, file);
-  if (!contained || contained.startsWith(`..${path.sep}`) || contained === '..' || path.isAbsolute(contained)) throw new Error('not_found');
+  try { file = await realpath(path.join(base, ...relative.split('/'))); }
+  catch (error) {
+    if (findMoved && ['ENOENT', 'ENOTDIR'].includes(error.code)) return findMoved(base, hash.toLowerCase());
+    throw new Error('not_found');
+  }
+  if (!isContained(base, file)) throw new Error('not_found');
   const info = await stat(file);
   if (!info.isFile() || info.size > 16 * 1024 * 1024) throw new Error('not_found');
   if (createHash('sha256').update(await readFile(file)).digest('hex') !== hash.toLowerCase()) throw new Error('stale_file');
   return file;
+}
+
+// Catalog paths can outlive a local folder move. Only recover a unique, byte-identical
+// chart inside this library; never guess by title or bypass checks on an existing path.
+export function createSongResolver(root) {
+  let index = null, indexedAt = 0, indexedBase = '';
+  async function findMoved(base, hash) {
+    if (!index || indexedBase !== base || Date.now() - indexedAt > 30_000) {
+      const next = new Map();
+      async function scan(directory) {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          // Do not traverse junctions or symbolic links during recovery.
+          if (entry.isSymbolicLink()) continue;
+          const candidate = path.join(directory, entry.name);
+          const file = await realpath(candidate).catch(() => null);
+          if (!file || !isContained(base, file)) continue;
+          if (entry.isDirectory()) await scan(file);
+          else if (entry.isFile() && /\.txt$/i.test(entry.name)) {
+            try {
+              const info = await stat(file);
+              if (!info.isFile() || info.size > 16 * 1024 * 1024) continue;
+              const digest = createHash('sha256').update(await readFile(file)).digest('hex');
+              const matches = next.get(digest) ?? [];
+              matches.push(file); next.set(digest, matches);
+            } catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
+          }
+        }
+      }
+      await scan(base);
+      index = next; indexedBase = base; indexedAt = Date.now();
+    }
+    const matches = index.get(hash) ?? [];
+    if (matches.length !== 1) throw new Error('not_found');
+    // Revalidate cached matches, including their current canonical path and hash.
+    try { return await resolveSong(base, path.relative(base, matches[0]).split(path.sep).join('/'), hash); }
+    catch (error) { index = null; throw error; }
+  }
+  return (relative, hash) => resolveSong(root, relative, hash, { findMoved });
 }
 export async function atomicJson(file, value) {
   const temporary = file + '.' + randomUUID() + '.tmp';
@@ -47,6 +93,7 @@ export async function runBridge(input, { signal, onConnection = console.info } =
   const config = validateConfig(input);
   await realpath(config.songsPath);
   await mkdir(config.exchangePath, { recursive: true });
+  const resolve = createSongResolver(config.songsPath);
   const agentId = randomUUID();
   let ack = null, pending = null, connection = '';
   const report = text => { if (connection !== text) { connection = text; onConnection(text); } };
@@ -73,7 +120,7 @@ export async function runBridge(input, { signal, onConnection = console.info } =
         else if (!game.ready) ack = { id: command.id, result: 'busy' };
         else {
           try {
-            const file = await resolveSong(config.songsPath, command.sourceRelativePath, command.sourceHash);
+            const file = await resolve(command.sourceRelativePath, command.sourceHash);
             // Recheck after disk I/O so an old selection never crosses a game restart or a deadline.
             const current = await gameStatus(config.exchangePath);
             if (!current || current.sessionId !== command.sessionId) throw new Error('game_offline');

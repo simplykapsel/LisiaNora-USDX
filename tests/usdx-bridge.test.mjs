@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, rm, realpath, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveSong, validateConfig } from '../tools/usdx-bridge/bridge.mjs';
+import { resolveSong, createSongResolver, validateConfig } from '../tools/usdx-bridge/bridge.mjs';
 const token = 'a'.repeat(43);
 const hash = createHash('sha256').update('chart').digest('hex');
 
@@ -42,4 +42,47 @@ test('bridge resolves a library alias and still rejects links outside the librar
   assert.equal(resolved, await realpath(chart));
   assert.notEqual(resolved, path.join(alias, 'Piosenka.txt'));
   await assert.rejects(resolveSong(alias, 'escape/Secret.txt', hash), /not_found/);
+});
+
+test('bridge recovers a moved and renamed chart by content, not title', async t => {
+  const root = await temporary(t);
+  await mkdir(path.join(root, 'Nowy folder'));
+  const moved = path.join(root, 'Nowy folder', 'Nowa nazwa.txt');
+  await writeFile(moved, 'chart');
+  await writeFile(path.join(root, 'Piosenka.txt'), 'different version');
+  const resolve = createSongResolver(root);
+  assert.equal(await resolve('old/Piosenka.txt', hash), await realpath(moved));
+  // An existing but changed chart must still require a catalog update.
+  await assert.rejects(resolve('Piosenka.txt', hash), /stale_file/);
+  // Cached candidates must be hashed again, not blindly accepted.
+  await writeFile(moved, 'edited after indexing');
+  await assert.rejects(resolve('old/Piosenka.txt', hash), /stale_file/);
+});
+
+test('moved chart recovery rejects ambiguous matches and malformed source paths', async t => {
+  const root = await temporary(t);
+  await writeFile(path.join(root, 'one.txt'), 'chart');
+  await writeFile(path.join(root, 'two.txt'), 'chart');
+  const resolve = createSongResolver(root);
+  await assert.rejects(resolve('old/Piosenka.txt', hash), /not_found/);
+  assert.equal(await resolve('one.txt', hash), await realpath(path.join(root, 'one.txt')));
+  for (const relative of ['../missing.txt', '/missing.txt', 'C:/missing.txt', 'old\\missing.txt']) {
+    await assert.rejects(resolve(relative, hash), /not_found/);
+  }
+});
+
+test('moved chart recovery does not search outside the library or follow directory loops', async t => {
+  const root = await temporary(t);
+  const library = path.join(root, 'library');
+  const outside = path.join(root, 'outside');
+  await mkdir(library); await mkdir(outside);
+  await writeFile(path.join(outside, 'Piosenka.txt'), 'chart');
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  await symlink(outside, path.join(library, 'escape'), linkType);
+  await symlink(library, path.join(library, 'loop'), linkType);
+  const resolve = createSongResolver(library);
+  await assert.rejects(resolve('old/Piosenka.txt', hash), /not_found/);
+  await writeFile(path.join(library, 'Piosenka.txt'), 'chart');
+  // An explicit escaping path cannot fall back to a matching chart inside.
+  await assert.rejects(createSongResolver(library)('escape/Piosenka.txt', hash), /not_found/);
 });

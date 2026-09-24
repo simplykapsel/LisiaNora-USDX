@@ -3,9 +3,11 @@ unit UQueueBridge;
 interface
 {$MODE Delphi}
 procedure PollQueueBridge;
+procedure ShowQueueSongAfterPlayers;
+procedure CancelQueueSongAfterPlayers;
 implementation
 uses Classes, SysUtils, DateUtils, fpjson, jsonparser,
-  UCommandLine, UPath, UDisplay, UGraphic, USong, USongs, UPlaylist, ULog;
+  UCommandLine, UPath, UDisplay, UGraphic, USong, USongs, UPlaylist, ULog, UIni, UNote;
 
 var
   LastPoll: QWord = 0;
@@ -13,10 +15,11 @@ var
   SessionID, LastID, LastResult, PendingID: string;
   PendingFile: UTF8String;
   PendingExpiry: Int64;
+  PlayerSetupFile: UTF8String;
 
 function Ready: boolean;
 begin
-  Result := (Display.NextScreen = nil) and
+  Result := (PlayerSetupFile = '') and (Display.NextScreen = nil) and
     ((Display.CurrentScreen = @ScreenMain) or
      ((Display.CurrentScreen = @ScreenSong) and (ScreenSong.Mode = smNormal))) and
     not ScreenPopupError.Visible and not ScreenPopupInfo.Visible and
@@ -47,6 +50,7 @@ begin
     Data.Add('updatedAt', DateTimeToUnix(Now, false));
     Data.Add('ready', Ready);
     Data.Add('playersConfigured', Assigned(ScreenSing));
+    Data.Add('awaitingPlayers', PlayerSetupFile <> '');
     if Display.CurrentScreen = @ScreenMain then Data.Add('screen', 'main')
     else if Display.CurrentScreen = @ScreenSong then Data.Add('screen', 'song')
     else if Display.CurrentScreen = @ScreenName then Data.Add('screen', 'players')
@@ -54,7 +58,8 @@ begin
     else Data.Add('screen', 'other');
     Data.Add('id', LastID);
     Data.Add('result', LastResult);
-    if (Display.CurrentScreen = @ScreenSong) and
+    if PlayerSetupFile <> '' then Data.Add('selectedFile', PlayerSetupFile)
+    else if (Display.CurrentScreen = @ScreenSong) and
       (ScreenSong.Interaction >= 0) and (ScreenSong.Interaction < Length(CatSongs.Song)) and
       not CatSongs.Song[ScreenSong.Interaction].Main then
       Data.Add('selectedFile', CatSongs.Song[ScreenSong.Interaction].Path.Append(
@@ -80,28 +85,20 @@ begin
   Log.LogStatus('Queue selection: ' + Outcome, 'QueueBridge');
 end;
 
-procedure SelectPending;
-var I, TargetIndex: integer; FilePath: IPath;
+function FindSong(const FileName: UTF8String): integer;
+var I: integer; FilePath: IPath;
 begin
-  if DateTimeToUnix(Now, false) >= PendingExpiry then
-  begin Finish(PendingID, 'expired'); Exit; end;
-  if Display.NextScreen <> nil then Exit;
-  if not Ready then begin Finish(PendingID, 'busy'); Exit; end;
-  if Display.CurrentScreen <> @ScreenSong then
-  begin
-    ScreenSong.Mode := smNormal;
-    // Entering from the main menu bypasses the normal player setup.
-    ScreenSong.QueueSelectionNeedsPlayers := true;
-    Display.FadeTo(@ScreenSong);
-    Exit;
-  end;
-  TargetIndex := -1;
-  FilePath := Path(PendingFile).GetAbsolutePath;
+  Result := -1;
+  FilePath := Path(FileName).GetAbsolutePath;
   for I := 0 to High(CatSongs.Song) do
     if not CatSongs.Song[I].Main and
       CatSongs.Song[I].Path.Append(CatSongs.Song[I].FileName).GetAbsolutePath.Equals(FilePath, {$IFDEF MSWINDOWS}true{$ELSE}false{$ENDIF}) then
-    begin TargetIndex := I; Break; end;
-  if TargetIndex < 0 then begin Finish(PendingID, 'not_found'); Exit; end;
+    begin Result := I; Exit; end;
+end;
+
+procedure HighlightSong(TargetIndex: integer);
+var I: integer;
+begin
   ScreenSong.OnSongDeSelect;
   PlaylistMan.UnsetPlayList;
   for I := 0 to High(CatSongs.Song) do
@@ -115,6 +112,55 @@ begin
   ScreenSong.SetScroll;
   ScreenSong.SetScrollRefresh;
   ScreenSong.ChangeMusic;
+end;
+
+procedure CancelQueueSongAfterPlayers;
+begin
+  PlayerSetupFile := '';
+  LastStatus := 0;
+end;
+
+procedure ShowQueueSongAfterPlayers;
+var TargetIndex: integer;
+begin
+  if PlayerSetupFile = '' then Exit;
+  if not Assigned(ScreenSing) or ScreenSong.QueueSelectionNeedsPlayers then Exit;
+  TargetIndex := FindSong(PlayerSetupFile);
+  CancelQueueSongAfterPlayers;
+  if TargetIndex >= 0 then HighlightSong(TargetIndex);
+end;
+
+procedure SelectPending;
+var TargetIndex: integer;
+begin
+  if DateTimeToUnix(Now, false) >= PendingExpiry then
+  begin Finish(PendingID, 'expired'); Exit; end;
+  if Display.NextScreen <> nil then Exit;
+  if not Ready then begin Finish(PendingID, 'busy'); Exit; end;
+  TargetIndex := FindSong(PendingFile);
+  if TargetIndex < 0 then begin Finish(PendingID, 'not_found'); Exit; end;
+  if not Assigned(ScreenSing) or ScreenSong.QueueSelectionNeedsPlayers then
+  begin
+    // Commit the local choice before the delivery deadline, then let the user
+    // complete normal player setup without a remote-command countdown.
+    PlayerSetupFile := PendingFile;
+    CatSongs.Selected := TargetIndex;
+    ScreenSong.Mode := smNormal;
+    ScreenSong.QueueSelectionNeedsPlayers := true;
+    ScreenSong.StopMusicPreview;
+    PlayersPlay := IPlayersVals[Ini.Players];
+    ScreenName.Goto_SingScreen := false;
+    Finish(PendingID, 'selected');
+    Display.FadeTo(@ScreenName);
+    Exit;
+  end;
+  if Display.CurrentScreen <> @ScreenSong then
+  begin
+    ScreenSong.Mode := smNormal;
+    Display.FadeTo(@ScreenSong);
+    Exit;
+  end;
+  HighlightSong(TargetIndex);
   Finish(PendingID, 'selected');
 end;
 
