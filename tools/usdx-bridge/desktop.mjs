@@ -72,7 +72,7 @@ export async function runDesktop(settings, { signal, onConnection, launch = spaw
   catch (error) { if (error.code !== 'EEXIST') throw error; }
   const abort = new AbortController();
   const args = ['-ConfigFile', gameConfig, '-ScoreFile', scores, '-QueueBridge', config.exchangePath];
-  if (settings.legacySongPath) args.push('-SongPath', settings.legacySongPath);
+  if (settings.legacySongPath) args.push('-SongPath', config.songsPath);
   const child = launch(game, args, {
     cwd: path.dirname(game), stdio: 'ignore', windowsHide: false,
   });

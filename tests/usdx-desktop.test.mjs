@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, rename } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, rename, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -10,10 +10,12 @@ import { WebSocketServer } from 'ws';
 import { atomicJson, runBridge } from '../tools/usdx-bridge/bridge.mjs';
 import { parseArguments, loadDesktopConfig, runDesktop } from '../tools/usdx-bridge/desktop.mjs';
 
-async function fixture(t) {
+async function fixture(t, { withLibraryAlias = false } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'usdx-desktop-'));
   t.after(() => { assert.equal(path.dirname(root), os.tmpdir()); assert.ok(path.basename(root).startsWith('usdx-desktop-')); return rm(root, { recursive: true, force: true }); });
   const songs = path.join(root, 'piosenki'); await mkdir(songs);
+  const songsPath = withLibraryAlias ? path.join(root, 'library-alias') : songs;
+  if (withLibraryAlias) await symlink(songs, songsPath, process.platform === 'win32' ? 'junction' : 'dir');
   await writeFile(path.join(root, 'ultrastardx.exe'), 'fixture');
   const file = path.join(root, 'bridge.json');
   const reports = [];
@@ -35,7 +37,7 @@ async function fixture(t) {
     sockets.close();
     server.close(resolve);
   }));
-  await writeFile(file, '\uFEFF' + JSON.stringify({ serverUrl: `http://127.0.0.1:${server.address().port}`, token: 'a'.repeat(43), songsPath: songs }));
+  await writeFile(file, '\uFEFF' + JSON.stringify({ serverUrl: `http://127.0.0.1:${server.address().port}`, token: 'a'.repeat(43), songsPath }));
   return { root, file, reports, sockets, settings: await loadDesktopConfig(file, root) };
 }
 
@@ -59,7 +61,8 @@ test('desktop config uses profile-local data, reads PowerShell BOM and rejects m
 });
 
 test('desktop keeps player settings and sends one initial report while the game is idle', async t => {
-  const f = await fixture(t);
+  const f = await fixture(t, { withLibraryAlias: true });
+  assert.equal(f.settings.config.songsPath, await realpath(path.join(f.root, 'piosenki')));
   const saved = '[Game]\nPlayers=2\nDifficulty=Hard\n[Directories]\nSongDir1=X:/previous-installation/songs\n'; await writeFile(f.settings.gameConfig, saved);
   let child;
   const exit = await runDesktop(f.settings, { onConnection: () => {}, launch: (exe, args, options) => {
