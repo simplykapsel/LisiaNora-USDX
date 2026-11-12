@@ -63,6 +63,23 @@ export function createSongResolver(root) {
   }
   return (relative, hash) => resolveSong(root, relative, hash, { findMoved });
 }
+
+export function createLibraryResolver(roots) {
+  const resolvers = roots.map(createSongResolver);
+  return async (relative, hash) => {
+    const matches = new Set();
+    let stale = false;
+    for (const resolve of resolvers) {
+      try { matches.add(await resolve(relative, hash)); }
+      catch (error) {
+        if (error.message === 'stale_file') stale = true;
+        else if (error.message !== 'not_found') throw error;
+      }
+    }
+    if (matches.size === 1) return [...matches][0];
+    throw new Error(matches.size === 0 && stale ? 'stale_file' : 'not_found');
+  };
+}
 export async function atomicJson(file, value) {
   const temporary = file + '.' + randomUUID() + '.tmp';
   await writeFile(temporary, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
@@ -86,6 +103,8 @@ export function validateConfig(config) {
   }
   if (!/^[A-Za-z0-9_-]{43,128}$/.test(config.token ?? '')) throw new Error('Missing or invalid bridge token.');
   if (!path.isAbsolute(config.songsPath ?? '') || !path.isAbsolute(config.exchangePath ?? '')) throw new Error('Use absolute songsPath and exchangePath.');
+  if (config.songsPaths !== undefined && (!Array.isArray(config.songsPaths) || !config.songsPaths.length
+    || config.songsPaths.some(root => typeof root !== 'string' || !path.isAbsolute(root)))) throw new Error('Use absolute songsPaths.');
   return { ...config, serverUrl: url.origin };
 }
 
@@ -116,9 +135,10 @@ export async function prepareGameCommand(config, command, resolve) {
 
 export async function runBridge(input, { signal, onConnection = console.info } = {}) {
   const config = validateConfig(input);
-  await realpath(config.songsPath);
+  const roots = config.songsPaths ?? [config.songsPath];
+  for (const root of roots) await realpath(root);
   await mkdir(config.exchangePath, { recursive: true });
-  const resolve = createSongResolver(config.songsPath);
+  const resolve = createLibraryResolver(roots);
   const agentId = randomUUID();
   let ack = null, pending = null, connection = '';
   const report = text => { if (connection !== text) { connection = text; onConnection(text); } };

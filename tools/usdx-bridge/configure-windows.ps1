@@ -39,7 +39,7 @@ $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
 $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($user,'FullControl','Allow')))
 $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier('S-1-5-18')),'FullControl','Allow')))
 Set-Acl -LiteralPath $Destination -AclObject $acl
-if ($GameConfig -and !(Test-Path -LiteralPath (Join-Path $directory 'game.ini'))) {
-    Copy-Item -LiteralPath $GameConfig -Destination (Join-Path $directory 'game.ini')
+if ($GameConfig -and !(Test-Path -LiteralPath (Join-Path $directory 'config.ini'))) {
+    Copy-Item -LiteralPath $GameConfig -Destination (Join-Path $directory 'config.ini')
 }
 Write-Host "Configuration saved: $Destination"

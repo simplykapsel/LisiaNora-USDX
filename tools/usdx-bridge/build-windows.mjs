@@ -46,7 +46,7 @@ await cp(game, output, { recursive: true, filter: source => {
     && !/\.(db|sqlite|sqlite3)(-|$)|\.(log|debug)$/i.test(name);
 } });
 await mkdir(path.join(output, 'songs'));
-await writeFile(path.join(output, 'songs', 'README.md'), '# Piosenki\n\nUmieść tutaj foldery piosenek UltraStar (TXT, audio i pozostałe pliki).\nGra i bridge domyślnie korzystają z tego katalogu.\nOpcjonalne songsPath w bridge.json wybiera bibliotekę w innym miejscu.\n');
+await writeFile(path.join(output, 'songs', 'README.md'), '# Piosenki\n\nUmieść tutaj foldery piosenek UltraStar (TXT, audio i pozostałe pliki).\nGra i bridge domyślnie korzystają z tego katalogu.\nDodatkowe katalogi, także na dysku przenośnym, ustaw w config.ini:\n\n[Directories]\nSongDir1=E:\\Piosenki\n');
 for (const name of ['COPYING', 'COPYRIGHT.txt', 'LICENSE', 'DEVELOPMENT-WINDOWS.md', 'QUEUE-BRIDGE.md']) { try { await copyFile(path.join(gameRepo, name), path.join(output, name)); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
 const license = await fetch('https://raw.githubusercontent.com/nodejs/node/' + process.version + '/LICENSE');
 if (!license.ok) throw new Error('Cannot obtain license for bundled Node.js version.');

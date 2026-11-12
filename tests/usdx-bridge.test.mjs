@@ -4,9 +4,24 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, rm, realpath, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveSong, createSongResolver, validateConfig, prepareGameCommand, canExecute } from '../tools/usdx-bridge/bridge.mjs';
+import { resolveSong, createSongResolver, createLibraryResolver, validateConfig, prepareGameCommand, canExecute } from '../tools/usdx-bridge/bridge.mjs';
 const token = 'a'.repeat(43);
 const hash = createHash('sha256').update('chart').digest('hex');
+
+test('queue searches all INI libraries and rejects ambiguous or escaping selections', async t => {
+  const root = await temporary(t);
+  const first = path.join(root, 'first'), second = path.join(root, 'second');
+  await mkdir(first); await mkdir(second);
+  const chart = path.join(second, 'Piosenka.txt'); await writeFile(chart, 'chart');
+  const resolve = createLibraryResolver([first, second]);
+  assert.equal(await resolve('Piosenka.txt', hash), await realpath(chart));
+  assert.equal(await createLibraryResolver([second, second])('Piosenka.txt', hash), await realpath(chart));
+  await assert.rejects(resolve('../second/Piosenka.txt', hash), /not_found/);
+  await assert.rejects(resolve('Piosenka.txt', '0'.repeat(64)), /stale_file/);
+  await writeFile(path.join(first, 'Piosenka.txt'), 'chart');
+  await assert.rejects(resolve('Piosenka.txt', hash), /not_found/);
+  await assert.rejects(createLibraryResolver([first, second])('missing.txt', hash), /not_found/);
+});
 
 test('playback targets a confirmed selection and the current take, including after a slow file check', async t => {
   const root = await temporary(t);

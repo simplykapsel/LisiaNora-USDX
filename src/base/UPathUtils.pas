@@ -207,9 +207,6 @@ begin
 
   // Add song paths
   AddSongPath(Params.SongPath);
-  // The queue launcher supplies the one library also used by its bridge.
-  if not (Params.QueueBridge.IsSet and Params.SongPath.IsSet) then
-  begin
 {$IF Defined(DARWIN)}
   AddSongPath(Platform.GetMusicPath);
   AddSongPath(UserPath.Append('songs'));
@@ -217,7 +214,6 @@ begin
   AddSongPath(SharedPath.Append('songs'));
   AddSongPath(UserPath.Append('songs'));
 {$IFEND}
-  end;
 
   // Add category cover paths
   AddCoverPath(SharedPath.Append('covers'));
