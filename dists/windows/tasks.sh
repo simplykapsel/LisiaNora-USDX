@@ -46,7 +46,7 @@ deps+=('sqlite,https://sqlite.org/2026/sqlite-autoconf-3530100.tar.gz,83e6b2020a
 deps+=('freetype,https://download-mirror.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz,36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f')
 deps+=('dav1d,https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz,686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5')
 deps+=('ffmpeg,https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz,8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e')
-deps+=('lua,https://www.lua.org/ftp/lua-5.5.1.tar.gz,1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce')
+deps+=('lua,https://www.lua.org/ftp/lua-5.5.1.tar.gz,1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce,https://www.tecgraf.puc-rio.br/lua/ftp/lua-5.5.1.tar.gz')
 deps+=('libjpeg-turbo,https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz,6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e')
 deps+=('libpng,https://download.sourceforge.net/libpng/libpng-1.6.58.tar.xz,28eb403f51f0f7405249132cecfe82ea5c0ef97f1b32c5a65828814ae0d34775')
 deps+=('libwebp,https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz,e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564')
@@ -450,6 +450,25 @@ task_install() {
 	done
 }
 
+download_file() {
+	local file="$1" expected="$2" url
+	shift 2
+	if [ -f "$file" ] && echo "$expected  $file" | sha256sum --check --status; then
+		return 0
+	fi
+	for url in "$@"; do
+		echo "Downloading $file from $url"
+		if curl --fail --silent --show-error --location --connect-timeout 10 --retry 2 "$url" -o "$file.part" &&
+			echo "$expected  $file.part" | sha256sum --check; then
+			mv -f "$file.part" "$file"
+			return 0
+		fi
+	done
+	rm -f "$file.part"
+	echo "Could not download a verified copy of $file" >&2
+	return 1
+}
+
 task_dl() {
 	for i in "${deps[@]}"; do
 		IFS=',' read -a dep <<< "$i"
@@ -466,16 +485,7 @@ task_dl() {
 		case "$filename" in
 		*.zip)
 			mkdir -p "deps/dl"
-			hashB="$(sha256sum "deps/dl/$bname" 2> /dev/null | awk '{print $1}')"
-			if [ ! -f "deps/dl/$bname" ] || [ "$hashA" != "$hashB" ]; then
-				echo "Downloading $name from $url"
-				curl -s -S -L "$url" -o "deps/dl/$bname"
-				hashB="$(sha256sum "deps/dl/$bname" 2> /dev/null | awk '{print $1}')"
-				if [ "$hashA" != "$hashB" ]; then
-					echo "Hashes doesn't match!" "$hashA" "$hashB"
-					exit 1
-				fi
-			fi
+			download_file "deps/dl/$bname" "$hashA" "$url" "${dep[@]:3}"
 			[ $extract = yes ] || continue
 			mkdir -p "deps/$name.tmp"
 			echo "Extracting $name"
@@ -496,16 +506,7 @@ task_dl() {
 			*)	compressor= ;;
 			esac
 			mkdir -p "deps/dl"
-			hashB="$(sha256sum "deps/dl/$bname" 2> /dev/null | awk '{print $1}')"
-			if [ ! -f "deps/dl/$bname" ] || [ "$hashA" != "$hashB" ]; then
-				echo "Downloading $name from $url"
-				curl -s -S -L "$url" -o "deps/dl/$bname"
-				hashB="$(sha256sum "deps/dl/$bname" 2> /dev/null | awk '{print $1}')"
-				if [ "$hashA" != "$hashB" ]; then
-					echo "Hashes doesn't match!" "$hashA" "$hashB"
-					exit 1
-				fi
-			fi
+			download_file "deps/dl/$bname" "$hashA" "$url" "${dep[@]:3}"
 			[ $extract = yes ] || continue
 			echo "Extracting $name"
 			rm -rf "deps/$name"
@@ -515,16 +516,7 @@ task_dl() {
 
 		*)
 			mkdir -p deps
-			hashB="$(sha256sum "deps/$name" 2> /dev/null | awk '{print $1}')"
-			if [ ! -f "deps/$name" ] || [ "$hashA" != "$hashB" ]; then
-				echo "Downloading $name from $url"
-				curl -s -S -L "$url" -o "deps/$name"
-				hashB="$(sha256sum "deps/$name" 2> /dev/null | awk '{print $1}')"
-				if [ "$hashA" != "$hashB" ]; then
-					echo "Hashes doesn't match!" "$hashA" "$hashB"
-					exit 1
-				fi
-			fi
+			download_file "deps/$name" "$hashA" "$url" "${dep[@]:3}"
 			echo "Extracting $name"
 			chmod +x "deps/$name"
 			;;
