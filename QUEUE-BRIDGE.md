@@ -6,6 +6,8 @@ Launcher dodaje `-SongPath <biblioteka bridge>`. Przy obu argumentach gra ładuj
 
 ## Wymiana plików
 
+Bridge łączy się z serwerem kolejki przez WebSocket pod `/api/bridge/usdx/socket`, używając adresu i klucza z obecnego profilu. Po połączeniu przesyła stan gry, następnie wysyła zmiany i potwierdzenia poleceń. Zmiana samego czasu zapisu `status.json` odbywa się lokalnie. Co 15 sekund bridge wysyła krótki komunikat sprawdzający połączenie. Po zerwaniu połączenia ponawia je i wysyła aktualny stan wraz z ostatnim potwierdzeniem. Przy aktualizacji stanowiska najpierw zaktualizuj serwer Queue.
+
 Jeden bridge na katalog. Zapis przez plik tymczasowy i zmianę nazwy. UTF-8, JSON, maksymalnie 16 KiB polecenia. Gra odczytuje polecenia na głównym wątku co 100 ms; status zapisuje co sekundę i po wyniku.
 
 | Plik | Pola |

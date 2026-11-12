@@ -5,6 +5,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createHash, randomUUID } from 'node:crypto';
+import { WebSocketServer } from 'ws';
+import { atomicJson, runBridge } from '../tools/usdx-bridge/bridge.mjs';
 import { parseArguments, loadDesktopConfig, runDesktop } from '../tools/usdx-bridge/desktop.mjs';
 
 async function fixture(t) {
@@ -13,12 +16,27 @@ async function fixture(t) {
   const songs = path.join(root, 'piosenki'); await mkdir(songs);
   await writeFile(path.join(root, 'ultrastardx.exe'), 'fixture');
   const file = path.join(root, 'bridge.json');
-  let polls = 0;
-  const server = createServer((request, response) => { polls++; response.setHeader('content-type', 'application/json'); response.end('{"command":null}'); });
+  const reports = [];
+  const server = createServer();
+  const sockets = new WebSocketServer({ server, path: '/api/bridge/usdx/socket' });
+  sockets.on('connection', (socket, request) => {
+    assert.equal(request.headers.authorization, 'Bearer ' + 'a'.repeat(43));
+    let accepted = false;
+    socket.on('message', data => {
+      const message = JSON.parse(data);
+      if (message.type === 'heartbeat') return socket.send('{"type":"alive"}');
+      reports.push(message);
+      if (!accepted) { accepted = true; socket.send('{"type":"ready"}'); }
+    });
+  });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
+  t.after(() => new Promise(resolve => {
+    for (const socket of sockets.clients) socket.terminate();
+    sockets.close();
+    server.close(resolve);
+  }));
   await writeFile(file, '\uFEFF' + JSON.stringify({ serverUrl: `http://127.0.0.1:${server.address().port}`, token: 'a'.repeat(43), songsPath: songs }));
-  return { root, file, polls: () => polls, settings: await loadDesktopConfig(file, root) };
+  return { root, file, reports, sockets, settings: await loadDesktopConfig(file, root) };
 }
 
 test('desktop defaults to the executable directory, independent of working directory, and allows an explicit profile', () => {
@@ -40,7 +58,7 @@ test('desktop config uses profile-local data, reads PowerShell BOM and rejects m
   await assert.rejects(loadDesktopConfig(f.file, f.root), error => !error.message.includes('do-not-print') && error.message.includes('bridge.json'));
 });
 
-test('desktop keeps player settings, polls while game runs and stops after game exit', async t => {
+test('desktop keeps player settings and sends one initial report while the game is idle', async t => {
   const f = await fixture(t);
   const saved = '[Game]\nPlayers=2\nDifficulty=Hard\n[Directories]\nSongDir1=X:/previous-installation/songs\n'; await writeFile(f.settings.gameConfig, saved);
   let child;
@@ -50,9 +68,9 @@ test('desktop keeps player settings, polls while game runs and stops after game 
     assert.equal(options.cwd, f.root);
     return child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},800)'], { stdio: 'ignore', windowsHide: true });
   } });
-  assert.equal(exit, 0); assert.equal(child.exitCode, 0); assert.ok(f.polls() > 0);
+  assert.equal(exit, 0); assert.equal(child.exitCode, 0); assert.equal(f.reports.length, 1);
   assert.equal(await readFile(f.settings.gameConfig, 'utf8'), saved);
-  const count = f.polls(); await new Promise(resolve => setTimeout(resolve, 600)); assert.equal(f.polls(), count);
+  await new Promise(resolve => setTimeout(resolve, 600)); assert.equal(f.sockets.clients.size, 0);
 });
 
 test('cancelling desktop supervision terminates only its child game', async t => {
@@ -64,6 +82,48 @@ test('cancelling desktop supervision terminates only its child game', async t =>
   assert.equal(await running, 1); assert.ok(child.killed);
   assert.match(await readFile(f.settings.gameConfig, 'utf8'), /Language=Polish/);
   assert.doesNotMatch(await readFile(f.settings.gameConfig, 'utf8'), /SongDir/);
+});
+
+test('local game timestamps stay off the wire and reconnect resends the last acknowledgment', { timeout: 15_000 }, async t => {
+  const { settings: { config }, reports, sockets } = await fixture(t);
+  const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+  async function until(check) {
+    const deadline = Date.now() + 4_000;
+    while (!await check()) {
+      if (Date.now() > deadline) assert.fail('Timed out waiting for the bridge');
+      await wait(20);
+    }
+  }
+  await mkdir(config.exchangePath, { recursive: true });
+  const file = path.join(config.exchangePath, 'command.json');
+  const game = { protocol: 1, sessionId: 'game', ready: true, controlProtocol: 2 };
+  const save = () => atomicJson(path.join(config.exchangePath, 'status.json'), { ...game, updatedAt: Date.now() / 1000 });
+  await save();
+  await writeFile(path.join(config.songsPath, 'song.txt'), 'chart');
+  const abort = new AbortController();
+  const running = runBridge(config, { signal: abort.signal, onConnection() {} });
+  try {
+    await until(() => reports.length);
+    await save(); await wait(700); await save(); await wait(700);
+    assert.equal(reports.length, 1);
+    const command = { action: 'select', id: randomUUID(), sessionId: game.sessionId,
+      sourceRelativePath: 'song.txt', sourceHash: createHash('sha256').update('chart').digest('hex'), expiresAt: Date.now() + 12_000 };
+    const [first] = sockets.clients;
+    first.send(JSON.stringify({ command }));
+    await until(async () => JSON.parse(await readFile(file, 'utf8').catch(() => 'null'))?.id === command.id);
+    game.id = command.id; game.result = 'selected'; game.selectionId = command.id;
+    await save();
+    await until(() => reports.at(-1)?.ack?.id === command.id);
+    const accepted = reports.at(-1);
+    first.terminate();
+    await until(() => reports.at(-1) !== accepted);
+    assert.deepEqual(reports.at(-1), accepted);
+    await rm(file);
+    const [second] = sockets.clients;
+    second.send(JSON.stringify({ command }));
+    await wait(700);
+    await assert.rejects(readFile(file), { code: 'ENOENT' });
+  } finally { abort.abort(); await running; }
 });
 
 test('omitting songsPath creates a portable library next to the executable, even with an external profile', async t => {
