@@ -687,9 +687,9 @@ var
   CurLyricsTime:          real;
   VideoFrameTime:         Extended;
   Line:                   TLyricLine;
+  LineDuet:               TLyricLine;
   medley_end:             boolean;
   medley_start_applause:  boolean;
-  LastLineSungToEnd:      boolean;
 begin
   ScreenSing.Background.Draw;
 
@@ -840,38 +840,12 @@ begin
   ScreenSing.Text[TextTimeText].Text := Format('%s%.2d:%.2d', [DisplayPrefix, DisplayMin, DisplaySec]);
   ScreenSing.Text[TextTimeText].Visible := ScreenSing.Settings.TimeBarVisible;
 
-  LastLineSungToEnd := false;
   //the song was sung to the end?
-  if not (ScreenSing.SungToEnd) and not(CurrentSong.isDuet) and not(ScreenSong.RapToFreestyle) then
+  if (not ScreenSing.SungToEnd) and (not ScreenSong.RapToFreestyle) then
   begin
-    Line := ScreenSing.Lyrics.GetUpperLine();
-    if Line.LastLine then
-    begin
-      LastLineSungToEnd := true;
-      for T := 0 to High(Line.Words) do
-      begin
-        if (CurLyricsTime < GetTimeFromBeat(Line.Words[T].Start + Line.Words[T].Length)) and
-           (not Line.Words[T].Freestyle) then
-          LastLineSungToEnd := false;
-      end;
-    end;
-    if LastLineSungToEnd then
-      ScreenSing.SungToEnd := true;
-  end
-  else
-  begin
-  {  Line := Lyrics.GetUpperLine();
-    LineDuet := LyricsDuet.GetUpperLine();
-    if Line.LastLine and (LineDuet.LastLine) then
-    begin
-      LastWord := Line.Words[Length(Line.Words)-1];
-      LastWordDuet := LineDuet.Words[Length(Line.Words)-1];
-      if (CurLyricsTime >= GetTimeFromBeat(LastWord.Start+LastWord.Length)) and (CurLyricsTime >= GetTimeFromBeat(LastWordDuet.Start+LastWordDuet.Length)) then
-        // TODO SAVE DUET SCORES
-        SungToEnd := false;
-        //SungToEnd := true;
-    end;
-    }
+    ScreenSing.SungToEnd := true;
+    for T := Low(CurrentSong.Tracks) to Min(PlayersPlay - 1, High(CurrentSong.Tracks)) do
+      ScreenSing.SungToEnd := ScreenSing.SungToEnd and (CurLyricsTime >= GetTimeFromBeat(CurrentSong.Tracks[T].HighestScoredBeat));
   end;
 
   // for medley-mode:

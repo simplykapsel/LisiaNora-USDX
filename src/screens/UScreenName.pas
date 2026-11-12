@@ -85,7 +85,7 @@ type
       APlayerColor: array of integer;
 
       PlayerAvatarButton: array of integer;
-      PlayerAvatarButtonMD5: array of UTF8String;
+
     public
       Goto_SingScreen: boolean; //If true then next Screen in SingScreen
       
@@ -376,7 +376,7 @@ begin
             Player[I-1].Name := PlayerNames[I-1];
             Player[I-1].Level := PlayerLevel[I-1];
 
-            Ini.PlayerAvatar[I-1] := PlayerAvatarButtonMD5[PlayerAvatars[I-1]];
+            Ini.PlayerAvatar[I-1] := AvatarsMD5[PlayerAvatars[I-1]];
 
             if (PlayerAvatars[I-1] = 0) then
             begin
@@ -540,12 +540,9 @@ procedure TScreenName.GenerateAvatars();
 var
   I: integer;
   Avatar: TAvatar;
-  AvatarFile: IPath;
-  Hash: string;
 begin
 
   SetLength(PlayerAvatarButton, Length(AvatarsList) + 1);
-  SetLength(PlayerAvatarButtonMD5, Length(AvatarsList) + 1);
 
   // 1st no-avatar dummy
   for I := 1 to UIni.IMaxPlayerCount do
@@ -567,13 +564,8 @@ begin
     // create avatar
     PlayerAvatarButton[I] := AddButton(Theme.Name.PlayerAvatar);
 
-    AvatarFile := AvatarsList[I];
-
-    Hash := MD5Print(MD5File(AvatarFile.ToNative));
-    PlayerAvatarButtonMD5[I] := UpperCase(Hash);
-
     // load avatar directly from its file
-    Avatar := Avatars.AddAvatar(AvatarFile);
+    Avatar := Avatars.AddAvatar(AvatarsList[I]);
 
     if (Avatar <> nil) then
     begin
@@ -886,7 +878,7 @@ begin
   begin
     PlayerNames[I] := Ini.Name[I];
     PlayerLevel[I] := Ini.PlayerLevel[I];
-    PlayerAvatars[I] := GetArrayIndex(PlayerAvatarButtonMD5, Ini.PlayerAvatar[I]);
+    PlayerAvatars[I] := GetArrayIndex(AvatarsMD5, Ini.PlayerAvatar[I]);
     // if it is -1 then the current saved md5 does not exist anymore (file has changed or was deleted entirely)
     // setting it to 0 just resets it to the colorized default avatar
     if (PlayerAvatars[I] = -1) then

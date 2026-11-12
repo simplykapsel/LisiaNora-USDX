@@ -222,6 +222,7 @@ type
       OnSongClick:    integer;
       PartyPopup:     integer;
       SingScores:     integer;
+      DuetScores:     integer;
       TopScores:      integer;
       SingTimebarMode:       integer;
       JukeboxTimebarMode:    integer;
@@ -450,7 +451,8 @@ const
   IScreenFade:    array[0..1] of UTF8String = ('Off', 'On');
   IAskbeforeDel:  array[0..1] of UTF8String = ('Off', 'On');
   ISingScores:    array[0..1] of UTF8String = ('Off', 'On');
-  ITopScores:    array[0..1] of UTF8String = ('All', 'Player');
+  IDuetScores:    array[0..1] of UTF8String = ('Off', 'On');
+  ITopScores:     array[0..1] of UTF8String = ('All', 'Player');
   IOnSongClick:   array[0..2] of UTF8String = ('Sing', 'Select Players', 'Open Menu');
   sStartSing = 0;
   sSelectPlayer = 1;
@@ -554,6 +556,7 @@ var
   IOnSongClickTranslated:      array[0..2] of UTF8String = ('Sing', 'Select Players', 'Open Menu');
   IPartyPopupTranslated:       array[0..1] of UTF8String = ('Off', 'On');
   ISingScoresTranslated:       array[0..1] of UTF8String = ('Off', 'On');
+  IDuetScoresTranslated:       array[0..1] of UTF8String = ('Off', 'On');
   ITopScoresTranslated:        array[0..1] of UTF8String = ('All', 'Player');
 
   IJoypadTranslated:           array[0..1] of UTF8String = ('Off', 'On');
@@ -890,6 +893,9 @@ begin
 
   ISingScoresTranslated[0]          := ULanguage.Language.Translate('OPTION_VALUE_OFF');
   ISingScoresTranslated[1]          := ULanguage.Language.Translate('OPTION_VALUE_ON');
+
+  IDuetScoresTranslated[0]          := ULanguage.Language.Translate('OPTION_VALUE_OFF');
+  IDuetScoresTranslated[1]          := ULanguage.Language.Translate('OPTION_VALUE_ON');
 
   ITopScoresTranslated[0]          := ULanguage.Language.Translate('OPTION_VALUE_ALL');
   ITopScoresTranslated[1]          := ULanguage.Language.Translate('OPTION_VALUE_PLAYER');
@@ -1506,14 +1512,11 @@ var
 begin
   LoadFontFamilyNames;
   ILyricsFont := FontFamilyNames;
-  GamePath := Platform.GetGameUserPath;
-
-  Log.LogStatus( 'GamePath : ' +GamePath.ToNative , '' );
 
   if (Params.ConfigFile.IsSet) then
     FileName := Params.ConfigFile
   else
-    FileName := GamePath.Append('config.ini');
+    FileName := Platform.GetGameUserPath().Append('config.ini');
 
   Log.LogStatus('Using config : ' + FileName.ToNative, 'Ini');
   IniFile := TMemIniFile.Create(FileName.ToNative);
@@ -1577,9 +1580,9 @@ begin
   DataBase.AddWebsite;
 
   // Webs Scores Path
-  WebScoresPath := Path(IniFile.ReadString('Directories', 'WebScoresDir', WebsitePath.ToNative));
+  WebScoresPath := Path(IniFile.ReadString('Directories', 'WebScoresDir', IPath(WebsitePaths[0]).ToNative));
   if not(DirectoryExists(WebScoresPath.ToNative)) then
-    WebScoresPath :=  WebsitePath;
+    WebScoresPath :=  WebsitePaths[0] as IPath;
 
   // ShowWebScore
   if (Length(DllMan.Websites) > 0) then
@@ -1703,6 +1706,9 @@ begin
 
   // SingScores
   SingScores := ReadArrayIndex(ISingScores, IniFile, 'Advanced', 'SingScores', IGNORE_INDEX, 'On');
+
+  // DuetScores
+  DuetScores := ReadArrayIndex(IDuetScores, IniFile, 'Advanced', 'DuetScores', IGNORE_INDEX, 'On');
 
   // TopScores
   TopScores := ReadArrayIndex(ITopScores, IniFile, 'Advanced', 'TopScores', IGNORE_INDEX, 'Player');
@@ -2023,6 +2029,9 @@ begin
 
     //SingScores
     IniFile.WriteString('Advanced', 'SingScores', ISingScores[SingScores]);
+
+    //DuetScores
+    IniFile.WriteString('Advanced', 'DuetScores', IDuetScores[DuetScores]);
 
     //TopScores
     IniFile.WriteString('Advanced', 'TopScores', ITopScores[TopScores]);

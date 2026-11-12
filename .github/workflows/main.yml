@@ -9,7 +9,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v6
         with:
@@ -17,11 +17,20 @@ jobs:
       - uses: msys2/setup-msys2@v2
         id: msys
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: false
           install: >-
-            autoconf-wrapper automake-wrapper git make pkgconf
-            mingw-w64-x86_64-gcc mingw-w64-x86_64-tools
+            base-devel
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-git
+            mingw-w64-ucrt-x86_64-ntldd
+            mingw-w64-ucrt-x86_64-nasm
+            patch
+            unzip
       - name: Install Lazarus 4.8 and Free Pascal 3.2.2
         shell: pwsh
         run: |
@@ -38,11 +47,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Prepare official runtime dependencies
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: ./tools/windows/prepare-runtime.ps1 -Download
+      - name: Cache DLLs
+        id: cache-dlls
+        uses: actions/cache@v6
+        with:
+          path: dists/windows/prefix
+          key: windows-dlls-${{ hashFiles('dists/windows/tasks.sh') }}
+      - name: Build DLLs
+        if: steps.cache-dlls.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: make -C dists/windows
+      - name: Install DLLs
+        shell: msys2 {0}
+        run: |
+          touch -d @0 dists/windows/tasks.sh
+          make -C dists/windows install
       - name: Build Windows x64
         shell: pwsh
         run: ./tools/windows/build.ps1 -Configuration Release -MsysRoot '${{ steps.msys.outputs.msys2-location }}'

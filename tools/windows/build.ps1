@@ -9,9 +9,10 @@ $bash = Join-Path $MsysRoot 'usr\bin\bash.exe'
 if (!(Test-Path -LiteralPath $bash)) { throw "MSYS2 not found: $bash" }
 if (!(Test-Path -LiteralPath (Join-Path $FpcBin 'fpc.exe'))) { throw "FPC not found: $FpcBin" }
 $env:USDX_FPC_BIN = $FpcBin
-$env:MSYSTEM = 'MINGW64'
+$env:MSYSTEM = 'UCRT64'
+$env:CHERE_INVOKING = '1'
 Push-Location $repo
 try {
-    & $bash 'tools/windows/build.sh' $Configuration
+    & $bash --login 'tools/windows/build.sh' $Configuration
     if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
 } finally { Pop-Location }

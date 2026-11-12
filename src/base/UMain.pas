@@ -307,6 +307,7 @@ var
   Done:             boolean;
   Report: string;
   I,J: Integer;
+  BackTraceFunction: TBacktraceStrFunc;
 begin
   Max_FPS := Ini.MaxFramerateGet;
   // need to explicitly stop this because it appears to be started by default
@@ -349,9 +350,10 @@ begin
             Report := Report + 'Exception class: ' + E.ClassName + LineEnding +
             'Message: ' + E.Message + LineEnding;
           end;
-          Report := Report + BackTraceStrFunc(ExceptAddr);
+          BackTraceFunction := Platform.GetBackTraceFunction();
+          Report := Report + BackTraceFunction(ExceptAddr);
           for I := 0 to ExceptFrameCount - 1 do
-            Report := Report + LineEnding + BackTraceStrFunc(ExceptFrames[I]);
+            Report := Report + LineEnding + BackTraceFunction(ExceptFrames[I]);
           ShowMessage(Report);
           done := true;
         end
@@ -540,7 +542,7 @@ begin
 
             // if print is pressed -> make screenshot and save to screenshot path
             if (SimKey = SDLK_SYSREQ) or (SimKey = SDLK_PRINTSCREEN) then
-              Display.SaveScreenShot
+              Display.HandleSDLScreenshotKey(SimKey, Event.key.keysym._mod)
             // if there is a visible popup then let it handle input instead of underlying screen
             // shoud be done in a way to be sure the topmost popup has preference (maybe error, then check)
             else if (ScreenPopupError <> nil) and (ScreenPopupError.Visible) then

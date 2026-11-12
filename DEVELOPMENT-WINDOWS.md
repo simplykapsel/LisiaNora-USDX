@@ -2,11 +2,11 @@
 
 ## Wymagania
 
-Windows x64; Lazarus 4.8 / FPC 3.2.2 (`C:\lazarus`); MSYS2 (`C:\msys64`): autoconf, automake, make, pkgconf, Git, GCC i narzędzia MinGW64; Python 3; Node.js 24+ do budowania klienta Windows.
+Windows x64; Lazarus 4.8 / FPC 3.2.2 (`C:\lazarus`); MSYS2 (`C:\msys64`): autoconf, automake, make, pkgconf, Git, GCC i narzędzia UCRT64 (pełna lista pakietów w `.github/workflows/main.yml`); Python 3; Node.js 24+ do budowania klienta Windows.
 
 ## Przygotowanie
 
-Bazą Lisiej Nory jest branch `release` repozytorium UltraStar-Deluxe/USDX (obecnie `2026.9.0`). Nasze dodatki rozwijamy na `main`; aktualizacje USDX pobieramy z `upstream/release`.
+Bazą Lisiej Nory jest branch `release` repozytorium UltraStar-Deluxe/USDX (obecnie `2026.11.0`). Nasze dodatki rozwijamy na `main`; aktualizacje USDX pobieramy z `upstream/release`.
 
 Konfiguracja po dodaniu remote `upstream` wskazującego na `https://github.com/UltraStar-Deluxe/USDX.git`:
 
@@ -23,7 +23,7 @@ Aby włączyć aktualizację USDX do naszych zmian, na czystym branchu `main` wy
 .\tools\windows\init-dev.ps1 -SongsPath 'D:\UltraStar Deluxe\songs'
 ```
 
-`prepare-runtime` pobiera DLL zgodne z bazą USDX. `init-dev` tworzy konfigurację tylko wtedy, gdy nie istnieje. Biblioteka pozostaje w podanym katalogu.
+`prepare-runtime` pobiera źródła bibliotek, sprawdza ich sumy i buduje DLL według `dists/windows/tasks.sh`. `init-dev` tworzy konfigurację tylko wtedy, gdy nie istnieje. Biblioteka pozostaje w podanym katalogu.
 
 ## Kompilacja
 
