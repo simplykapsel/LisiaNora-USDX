@@ -17,12 +17,20 @@ Umieść foldery piosenek w `songs` obok `LisiaNora.exe`. Skopiuj `bridge.exampl
 |---|---|
 | `serverUrl` | Origin serwera Queue, np. `https://us.kapsel.me`; bez `/admin`. |
 | `token` | Ta sama wartość co `USDX_BRIDGE_TOKEN` w Compose serwera. |
-| `songsPath` | Opcjonalna bezwzględna ścieżka biblioteki na innym dysku. Bez tego pola: `songs` obok EXE. |
+| `songsPath` | Zgodność ze starymi profilami: dodatkowa biblioteka, używana tylko gdy `config.ini` nie zawiera niepustych wpisów `SongDir`. Nowe ścieżki wpisuj w `config.ini`. |
 | `exchangePath` | Opcjonalny katalog wymiany. Domyślnie `.queue-bridge` obok profilu. |
 
-Alternatywnie uruchom `configure-windows.ps1` z `-ServerUrl`; skrypt poprosi o token. Opcjonalny `-SongsPath` wybiera bibliotekę zewnętrzną. `-ImportConfig` zachowuje ustawienia istniejącego JSON, w tym jawną ścieżkę. `-GameConfig` kopiuje ustawienia USDX do `game.ini`, jeśli plik jeszcze nie istnieje.
+Alternatywnie uruchom `configure-windows.ps1` z `-ServerUrl`; skrypt poprosi o token. Opcjonalny `-SongsPath` zapisuje ścieżkę w starym formacie JSON. `-ImportConfig` zachowuje ustawienia istniejącego JSON, w tym jawną ścieżkę. `-GameConfig` kopiuje ustawienia USDX do `config.ini`, jeśli plik jeszcze nie istnieje.
 
-Launcher przekazuje grze tę samą bibliotekę co bridge przez `-SongPath`. W połączeniu z `-QueueBridge` gra używa tylko tego katalogu, ignorując stare wpisy `SongDir` w `game.ini`. Ustawienia mikrofonów i graczy pozostają zachowane. Także przy `--config` wskazującym profil w innym miejscu domyślny `songs` jest obok EXE. Brakujący domyślny folder powstaje automatycznie.
+Gra czyta standardowy `config.ini`. Aby dodać piosenki z dysku przenośnego, zamknij grę i wpisz w nim:
+
+```ini
+[Directories]
+SongDir1=E:\Piosenki
+SongDir2=F:\Karaoke
+```
+
+Gra i kolejka korzystają z tych katalogów oraz domyślnego `songs` obok EXE. Wpisy `SongDir` mają pierwszeństwo przed starym `songsPath` w JSON. Ścieżki względne są liczone od katalogu EXE; nieistniejące katalogi z INI są pomijane, jak w USDX. Po podłączeniu dysku lub zmianie ścieżek uruchom grę ponownie. Także przy `--config` wskazującym profil w innym miejscu domyślny `songs` jest obok EXE. Brakujący domyślny folder powstaje automatycznie.
 
 ## Uruchomienie
 
@@ -32,15 +40,15 @@ Pierwszy wybór piosenki z kolejki w świeżo uruchomionej grze otwiera standard
 
 `LisiaNora.exe --check` sprawdza profil, pliki gry, bibliotekę i dostępność serwera. Log: `bridge.log`. `--config <ścieżka>` wybiera inny profil NAS/VPS. Nie uruchamiaj dwóch bridge dla tego samego katalogu wymiany.
 
-Po przeniesieniu lub zmianie nazwy piosenki bridge odnajdzie brakującą ścieżkę po identycznej zawartości TXT w `songsPath`, jeśli dopasowanie jest jednoznaczne. Pierwsze takie wyszukiwanie skanuje bibliotekę. Zmiana zawartości TXT wymaga ponownego eksportu katalogu. Po zmianie plików uruchom ponownie grę, aby wczytała aktualną bibliotekę.
+Po przeniesieniu lub zmianie nazwy piosenki bridge odnajdzie brakującą ścieżkę po identycznej zawartości TXT w skonfigurowanych katalogach, jeśli dopasowanie jest jednoznaczne. Pierwsze takie wyszukiwanie skanuje bibliotekę. Zmiana zawartości TXT wymaga ponownego eksportu katalogu. Po zmianie plików uruchom ponownie grę, aby wczytała aktualną bibliotekę.
 
 ## Ustawienia i aktualizacja
 
-Obok `bridge.json` znajdują się `game.ini`, `scores.db`, `bridge.log` i `.queue-bridge`. Token nie jest wpisywany do EXE ani `game.ini`. Zmiana serwera lub tokenu wymaga ponownego uruchomienia, bez kompilacji.
+Obok `bridge.json` znajdują się `config.ini`, `scores.db`, `bridge.log` i `.queue-bridge`. Token nie jest wpisywany do EXE ani `config.ini`. Zmiana serwera lub tokenu wymaga ponownego uruchomienia, bez kompilacji.
 
-Przy aktualizacji zamknij grę i zachowaj `bridge.json`, `game.ini` oraz `scores.db`. Ze starego launchera skopiuj te pliki z `%LOCALAPPDATA%\LisiaNora-USDX`. Nie dołączaj swojego profilu z tokenem do udostępnianego ZIP-a.
+Przy aktualizacji zamknij grę i zachowaj `bridge.json`, `config.ini` oraz `scores.db`. Launcher korzysta wyłącznie z `config.ini`; nie odczytuje ani nie tworzy `game.ini`. Istniejące ustawienia w `config.ini` nie są zastępowane. Nie dołączaj swojego profilu z tokenem do udostępnianego ZIP-a.
 
-Przy przenoszeniu instalacji zachowaj też cały folder `songs`. Jeśli stary `bridge.json` zawiera `songsPath`, nadal będzie używana wskazana tam biblioteka. Aby przejść na folder wewnętrzny, skopiuj do niego piosenki i usuń pole `songsPath` z profilu. Paczka aktualizacji zawiera tylko instrukcję w `songs`, bez Twoich piosenek.
+Przy przenoszeniu instalacji zachowaj też cały folder `songs` i sprawdź litery dysków w `config.ini`. Stary `songsPath` działa, gdy INI nie zawiera ścieżek piosenek. Aby przejść na folder wewnętrzny, skopiuj do niego piosenki i usuń zewnętrzne ścieżki z INI oraz stare pole `songsPath` z profilu. Paczka aktualizacji zawiera tylko instrukcję w `songs`, bez Twoich piosenek.
 
 ## Development
 

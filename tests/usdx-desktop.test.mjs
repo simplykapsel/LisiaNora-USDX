@@ -33,6 +33,7 @@ test('desktop config uses profile-local data, reads PowerShell BOM and rejects m
   const f = await fixture(t);
   assert.equal(f.settings.config.exchangePath, path.join(f.root, '.queue-bridge'));
   assert.equal(f.settings.scores, path.join(f.root, 'scores.db'));
+  assert.equal(f.settings.gameConfig, path.join(f.root, 'config.ini'));
   assert.equal(parseArguments(['--config', f.file, '--check']).check, true);
   assert.throws(() => parseArguments(['--unknown']), /argumenty/);
   await writeFile(f.file, '{"token":"do-not-print-this-secret');
@@ -93,4 +94,43 @@ test('explicit external libraries remain supported and invalid paths do not fall
   await assert.rejects(loadDesktopConfig(f.file, f.root), { code: 'ENOENT' });
   input.songsPath = path.join(f.root, 'ultrastardx.exe'); await writeFile(f.file, JSON.stringify(input));
   await assert.rejects(loadDesktopConfig(f.file, f.root), /katalogiem/);
+});
+
+test('config.ini directories override an obsolete JSON library and reach both game and bridge', async t => {
+  const f = await fixture(t);
+  const external = path.join(f.root, 'Dysk przenośny'); await mkdir(external);
+  const relative = path.join(f.root, 'Druga biblioteka'); await mkdir(relative);
+  const saved = '\uFEFF[Game]\nPlayers=2\n[directories]\nSongDir1=' + external
+    + '\nSongDir2=Druga biblioteka\nSongDir3=' + path.join(f.root, 'disconnected') + '\nSongDir4= \n';
+  await writeFile(path.join(f.root, 'config.ini'), saved);
+  const input = JSON.parse((await readFile(f.file, 'utf8')).replace(/^\uFEFF/, ''));
+  input.songsPath = path.join(f.root, 'obsolete'); await writeFile(f.file, JSON.stringify(input));
+  const settings = await loadDesktopConfig(f.file, f.root);
+  assert.deepEqual(settings.config.songsPaths, await Promise.all([
+    path.join(f.root, 'songs'), external, relative,
+  ].map(directory => realpath(directory))));
+  const abort = new AbortController();
+  await runDesktop(settings, { signal: abort.signal, onConnection: () => {}, launch: (exe, args) => {
+    assert.equal(args[args.indexOf('-ConfigFile') + 1], path.join(f.root, 'config.ini'));
+    assert.equal(args.includes('-SongPath'), false);
+    const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},30000)'], { stdio: 'ignore', windowsHide: true });
+    child.once('spawn', () => abort.abort()); return child;
+  } });
+  assert.equal(await readFile(settings.gameConfig, 'utf8'), saved);
+});
+
+test('desktop ignores game.ini and creates only config.ini', async t => {
+  const f = await fixture(t);
+  const legacy = path.join(f.root, 'game.ini');
+  const saved = '[Game]\nPlayers=4\n[Record]\nDeviceName=USB microphone\n[Directories]\nSongDir1=' + path.join(f.root, 'piosenki') + '\n';
+  await writeFile(legacy, saved);
+  const settings = await loadDesktopConfig(f.file, f.root);
+  await assert.rejects(readFile(settings.gameConfig, 'utf8'), { code: 'ENOENT' });
+  const abort = new AbortController();
+  await runDesktop(settings, { signal: abort.signal, onConnection: () => {}, launch: () => {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},30000)'], { stdio: 'ignore', windowsHide: true });
+    child.once('spawn', () => abort.abort()); return child;
+  } });
+  assert.equal(await readFile(settings.gameConfig, 'utf8'), '[Game]\nLanguage=Polish\n');
+  assert.equal(await readFile(legacy, 'utf8'), saved);
 });

@@ -64,7 +64,7 @@ Projekt Lazarusa: `src/ultrastardx-queue-win64.lpi`. Build: `tools/windows/lazar
 
 Testy graczy używają osobnej konfiguracji, wyników i wymiany w `.local`. `Fresh` sprawdza ekran graczy przed pokazaniem piosenki, oczekiwanie dłuższe niż termin dostarczenia polecenia, anulowanie i ponowny wybór. `Configured` sprawdza zachowanie zatwierdzonych graczy przy kolejnych wyborach. Oba sprawdzają blokadę wyboru podczas śpiewania. Parametr `-Python` pozwala podać ścieżkę interpretera.
 
-`-LibraryPath` testuje bibliotekę przekazaną przez launcher. Z `-ExcludedSong` wskazującym piosenkę ze starej biblioteki profilowej test `Fresh` sprawdza też, że gra jej nie ładuje.
+`-LibraryPath` testuje dodatkową bibliotekę przekazaną przez `-SongPath`; katalogi z `config.ini` pozostają aktywne. Opcjonalny `-ExcludedSong` musi wskazywać piosenkę poza wszystkimi katalogami gry (domyślnymi, z INI i z `-SongPath`); test `Fresh` sprawdza, że gra jej nie ładuje.
 
 `Playback` sprawdza zdalny Start i Cofnij Start, zachowanie piosenki/graczy, brak nowych wyników po przerwaniu oraz odrzucenie powtórzonego Start i cofnięcia starego wykonania. `Completion` oczekuje na naturalny koniec utworu i ekran wyników; używaj krótkiej testowej piosenki (poniżej 30 s), z nutami przed końcem audio. Testy wymagają Debug; profil testowy bez przypisanych mikrofonów zatwierdza ich standardowe ostrzeżenie.
 
