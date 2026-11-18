@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { watch } from 'node:fs';
 import { readFile, realpath, stat, mkdir, writeFile, rename, rm, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -133,7 +134,7 @@ export async function prepareGameCommand(config, command, resolve) {
     expiresAt: Math.floor(command.expiresAt / 1000) };
 }
 
-export async function runBridge(input, { signal, onConnection = console.info } = {}) {
+export async function runBridge(input, { signal, onConnection = console.info, socketRetryMs = 10_000 } = {}) {
   const config = validateConfig(input);
   const roots = config.songsPaths ?? [config.songsPath];
   for (const root of roots) await realpath(root);
@@ -142,6 +143,41 @@ export async function runBridge(input, { signal, onConnection = console.info } =
   const agentId = randomUUID();
   let ack = null, pending = null, connection = '';
   const report = text => { if (connection !== text) { connection = text; onConnection(text); } };
+  // A WebSocket delivers commands as soon as the panel sends them; HTTP polling every 500 ms
+  // remains the fallback when the socket cannot connect (for example behind a proxy).
+  let socket = null, socketReady = false, sent = '', heartbeatAt = 0, socketRetryAt = 0, incoming = null, wake = () => {};
+  const socketUrl = config.serverUrl.replace(/^http/, 'ws') + '/api/bridge/usdx/socket';
+  function openSocket() {
+    socketRetryAt = Date.now() + socketRetryMs;
+    const current = new WebSocket(socketUrl, { headers: { authorization: `Bearer ${config.token}` } });
+    socket = current;
+    current.onmessage = event => {
+      let message;
+      try { message = JSON.parse(event.data); } catch { return; }
+      if (message?.type === 'ready') socketReady = true;
+      if (message?.command) { incoming = message.command; wake(); }
+    };
+    current.onclose = () => { if (socket === current) { socket = null; socketReady = false; sent = ''; } };
+    current.onerror = () => {};
+  }
+  async function accept(command, game) {
+    if (!command || command.id === pending?.id || command.id === ack?.id) return;
+    if (!game || command.sessionId !== game.sessionId) ack = { id: command.id, result: 'game_offline' };
+    else if (!Number.isFinite(command.expiresAt) || command.expiresAt <= Date.now() || command.expiresAt > Date.now() + 20_000) ack = { id: command.id, result: 'expired' };
+    else {
+      try {
+        const payload = await prepareGameCommand(config, command, resolve);
+        await atomicJson(path.join(config.exchangePath, 'command.json'), payload);
+        pending = command;
+      } catch (error) {
+        const result = ['not_found', 'stale_file', 'game_offline', 'busy', 'expired', 'unsupported'].includes(error.message) ? error.message : 'error';
+        ack = { id: command.id, result };
+      }
+    }
+  }
+  // The game rewrites status.json on every change; react at once instead of on the next tick.
+  let watcher = null;
+  try { watcher = watch(config.exchangePath, () => wake()); watcher.on('error', () => {}); } catch { /* The 500 ms tick still runs. */ }
   while (!signal?.aborted) {
     try {
       const game = await gameStatus(config.exchangePath);
@@ -151,36 +187,39 @@ export async function runBridge(input, { signal, onConnection = console.info } =
           ack = { id: pending.id, result: game.result }; pending = null;
         } else if (pending.expiresAt <= Date.now()) { ack = { id: pending.id, result: 'expired' }; pending = null; }
       }
-      const response = await fetch(config.serverUrl + '/api/bridge/usdx/poll', {
-        method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(4000)]) : AbortSignal.timeout(4000),
-        headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ agentId, game: game ? { sessionId: game.sessionId, ready: game.ready,
-          controlProtocol: game.controlProtocol, canStart: game.canStart, canReset: game.canReset,
-          awaitingPlayers: game.awaitingPlayers, selectionId: game.selectionId,
-          performanceId: game.performanceId, performanceState: game.performanceState } : null, ack }),
-      });
-      if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
-      const { command } = await response.json();
-      report(game ? 'Połączono z kolejką i USDX.' : 'Połączono z kolejką. Uruchom USDX z obsługą kolejki.');
-      if (command && command.id !== pending?.id && command.id !== ack?.id) {
-        if (!game || command.sessionId !== game.sessionId) ack = { id: command.id, result: 'game_offline' };
-        else if (!Number.isFinite(command.expiresAt) || command.expiresAt <= Date.now() || command.expiresAt > Date.now() + 20_000) ack = { id: command.id, result: 'expired' };
-        else {
-          try {
-            const payload = await prepareGameCommand(config, command, resolve);
-            await atomicJson(path.join(config.exchangePath, 'command.json'), payload);
-            pending = command;
-          } catch (error) {
-            const result = ['not_found', 'stale_file', 'game_offline', 'busy', 'expired', 'unsupported'].includes(error.message) ? error.message : 'error';
-            ack = { id: command.id, result };
-          }
-        }
+      if (incoming) { const command = incoming; incoming = null; await accept(command, game); }
+      const body = JSON.stringify({ agentId, game: game ? { sessionId: game.sessionId, ready: game.ready,
+        controlProtocol: game.controlProtocol, canStart: game.canStart, canReset: game.canReset,
+        awaitingPlayers: game.awaitingPlayers, selectionId: game.selectionId,
+        performanceId: game.performanceId, performanceState: game.performanceState } : null, ack });
+      if (!socket && Date.now() >= socketRetryAt) openSocket();
+      if (socket?.readyState === WebSocket.OPEN) {
+        // Report only changes; the server needs a sign of life at least every 35 s.
+        if (body !== sent) { socket.send(body); sent = body; heartbeatAt = Date.now(); }
+        else if (socketReady && Date.now() - heartbeatAt > 15_000) { socket.send('{"type":"heartbeat"}'); heartbeatAt = Date.now(); }
+        if (socketReady) report(game ? 'Połączono z kolejką i USDX.' : 'Połączono z kolejką. Uruchom USDX z obsługą kolejki.');
+      } else {
+        const response = await fetch(config.serverUrl + '/api/bridge/usdx/poll', {
+          method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(4000)]) : AbortSignal.timeout(4000),
+          headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' }, body,
+        });
+        if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
+        const { command } = await response.json();
+        report(game ? 'Połączono z kolejką i USDX.' : 'Połączono z kolejką. Uruchom USDX z obsługą kolejki.');
+        await accept(command, game);
       }
     } catch (error) {
       if (signal?.aborted) break;
       // Do not log request headers, token, response bodies, or song paths.
       report('Brak połączenia z kolejką. Sprawdź adres i klucz. Ponawiam połączenie.');
     }
-    await new Promise(resolve => { const timer = setTimeout(done, 500); function done() { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); } signal?.addEventListener('abort', done, { once: true }); });
+    await new Promise(resolve => {
+      const timer = setTimeout(done, 500);
+      function done() { clearTimeout(timer); wake = () => {}; signal?.removeEventListener('abort', done); resolve(); }
+      wake = done;
+      signal?.addEventListener('abort', done, { once: true });
+    });
   }
+  watcher?.close();
+  socket?.close();
 }
