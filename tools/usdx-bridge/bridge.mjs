@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { watch } from 'node:fs';
 import { readFile, realpath, stat, mkdir, writeFile, rename, rm, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -169,6 +170,40 @@ export async function runBridge(input, { signal, onConnection = console.info } =
     signal?.addEventListener('abort', done, { once: true });
     if (signal?.aborted) done();
   });
+  const settle = game => {
+    const result = pending && gameResult(pending, game);
+    if (result) { ack = { id: pending.id, result }; pending = null; }
+  };
+  async function accept(incoming, game, cancelled) {
+    if (!incoming || incoming.id === pending?.id || incoming.id === ack?.id) return;
+    if (!game || incoming.sessionId !== game.sessionId) ack = { id: incoming.id, result: 'game_offline' };
+    else if (!Number.isFinite(incoming.expiresAt) || incoming.expiresAt <= Date.now() || incoming.expiresAt > Date.now() + 20_000) ack = { id: incoming.id, result: 'expired' };
+    else {
+      try {
+        const payload = await prepareGameCommand(config, incoming, resolve);
+        if (cancelled()) return;
+        await atomicJson(path.join(config.exchangePath, 'command.json'), payload);
+        pending = incoming;
+      } catch (error) {
+        const result = ['not_found', 'stale_file', 'game_offline', 'busy', 'expired', 'unsupported'].includes(error.message) ? error.message : 'error';
+        ack = { id: incoming.id, result };
+      }
+    }
+  }
+  // HTTP polling keeps the queue working when the socket is refused (for example behind a proxy).
+  async function poll() {
+    const game = await gameStatus(config.exchangePath);
+    settle(game);
+    const response = await fetch(new URL('/api/bridge/usdx/poll', config.serverUrl), {
+      method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(4000)]) : AbortSignal.timeout(4000),
+      headers: { authorization: 'Bearer ' + config.token, 'content-type': 'application/json' },
+      body: JSON.stringify({ agentId, game: queueState(game), ack }),
+    });
+    if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
+    const { command } = await response.json();
+    report(game ? 'Połączono z kolejką i USDX.' : 'Połączono z kolejką. Uruchom USDX z obsługą kolejki.');
+    await accept(command, game, () => signal?.aborted);
+  }
   const url = new URL('/api/bridge/usdx/socket', config.serverUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   let retry = 500;
@@ -182,6 +217,9 @@ export async function runBridge(input, { signal, onConnection = console.info } =
     socket.addEventListener('open', interrupt);
     socket.addEventListener('close', () => { closed = true; interrupt(); });
     socket.addEventListener('error', stop);
+    // The game rewrites status.json on every change; react at once instead of on the next tick.
+    let watcher = null;
+    try { watcher = watch(config.exchangePath, interrupt); watcher.on('error', () => {}); } catch { /* The 500 ms tick still runs. */ }
     socket.addEventListener('message', event => {
       try {
         const packet = JSON.parse(event.data);
@@ -200,8 +238,7 @@ export async function runBridge(input, { signal, onConnection = console.info } =
         if (socket.readyState === WebSocket.OPEN) {
           const game = await gameStatus(config.exchangePath);
           if (closed || signal?.aborted) break;
-          const result = pending && gameResult(pending, game);
-          if (result) { ack = { id: pending.id, result }; pending = null; }
+          settle(game);
           const state = JSON.stringify({ agentId, game: queueState(game), ack });
           if (state !== previous) { socket.send(state); previous = state; }
           if (ready) {
@@ -213,21 +250,7 @@ export async function runBridge(input, { signal, onConnection = console.info } =
           }
           const incoming = command;
           command = null;
-          if (incoming && incoming.id !== pending?.id && incoming.id !== ack?.id) {
-            if (!game || incoming.sessionId !== game.sessionId) ack = { id: incoming.id, result: 'game_offline' };
-            else if (!Number.isFinite(incoming.expiresAt) || incoming.expiresAt <= Date.now() || incoming.expiresAt > Date.now() + 20_000) ack = { id: incoming.id, result: 'expired' };
-            else {
-              try {
-                const payload = await prepareGameCommand(config, incoming, resolve);
-                if (closed || signal?.aborted) break;
-                await atomicJson(path.join(config.exchangePath, 'command.json'), payload);
-                pending = incoming;
-              } catch (error) {
-                const result = ['not_found', 'stale_file', 'game_offline', 'busy', 'expired', 'unsupported'].includes(error.message) ? error.message : 'error';
-                ack = { id: incoming.id, result };
-              }
-            }
-          }
+          await accept(incoming, game, () => closed || signal?.aborted);
         }
         if (!command && !closed && !signal?.aborted) await new Promise(resolve => {
           const timer = setTimeout(done, 500);
@@ -237,11 +260,23 @@ export async function runBridge(input, { signal, onConnection = console.info } =
       }
     } finally {
       signal?.removeEventListener('abort', stop);
+      watcher?.close();
       stop();
     }
     if (signal?.aborted) break;
-    report('Brak połączenia z kolejką. Sprawdź adres i klucz. Ponawiam połączenie.');
-    await wait(retry);
+    const nextSocket = Date.now() + retry;
+    if (ready) {
+      report('Brak połączenia z kolejką. Sprawdź adres i klucz. Ponawiam połączenie.');
+      await wait(retry);
+    } else while (!signal?.aborted && Date.now() < nextSocket) {
+      try { await poll(); }
+      catch {
+        if (signal?.aborted) break;
+        // Do not log request headers, token, response bodies, or song paths.
+        report('Brak połączenia z kolejką. Sprawdź adres i klucz. Ponawiam połączenie.');
+      }
+      await wait(Math.min(500, nextSocket - Date.now()));
+    }
     retry = Math.min(15_000, retry * 2);
   }
 }
