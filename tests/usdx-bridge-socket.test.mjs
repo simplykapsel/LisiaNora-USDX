@@ -55,7 +55,7 @@ function fakeQueue({ acceptSocket }) {
   return { server, polls, reports };
 }
 
-async function scenario(t, acceptSocket) {
+async function scenario(t, acceptSocket, command = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'usdx-socket-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const songs = path.join(root, 'songs'), exchange = path.join(root, 'exchange');
@@ -66,18 +66,25 @@ async function scenario(t, acceptSocket) {
   await status();
   const queue = fakeQueue({ acceptSocket });
   queue.server.nextCommand = { id: randomUUID(), action: 'select', sessionId: 'game', sourceRelativePath: 'Artist/song.txt',
-    sourceHash: createHash('sha256').update('chart').digest('hex'), expiresAt: Date.now() + 15_000 };
+    sourceHash: createHash('sha256').update('chart').digest('hex'), expiresAt: Date.now() + 15_000, ...command };
   await new Promise(resolve => queue.server.listen(0, '127.0.0.1', resolve));
   const abort = new AbortController();
   const bridge = runBridge({ serverUrl: `http://127.0.0.1:${queue.server.address().port}`, token, songsPath: songs, exchangePath: exchange },
     { signal: abort.signal, onConnection: () => {} });
   t.after(async () => { abort.abort(); await bridge; queue.server.closeAllConnections(); queue.server.close(); });
   await until(() => existsSync(path.join(exchange, 'command.json')));
-  const { id } = JSON.parse(await readFile(path.join(exchange, 'command.json'), 'utf8'));
+  const delivered = JSON.parse(await readFile(path.join(exchange, 'command.json'), 'utf8'));
+  const { id } = delivered;
   assert.equal(id, queue.server.nextCommand.id);
   await status({ id, result: 'selected' });
-  return { queue, id };
+  return { queue, id, delivered };
 }
+
+test('a server clock 82 s behind the bridge still delivers the command with a local deadline', async t => {
+  const { queue, id, delivered } = await scenario(t, true, { expiresAt: Date.now() - 82_000 + 15_000, expiresIn: 15_000 });
+  assert.ok(Math.abs(delivered.expiresAt - (Date.now() + 15_000) / 1000) < 3, 'the game gets a deadline on its own clock');
+  await until(() => queue.reports.some(report => report.ack?.id === id && report.ack.result === 'selected'));
+});
 
 test('bridge takes commands over the socket and reports the result there', async t => {
   const { queue, id } = await scenario(t, true);

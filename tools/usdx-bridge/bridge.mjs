@@ -181,8 +181,10 @@ export async function runBridge(input, { signal, onConnection = console.info } =
     const result = pending && gameResult(pending, game);
     if (result) { ack = { id: pending.id, result }; pending = null; }
   };
-  async function accept(incoming, game, cancelled) {
-    if (!incoming || incoming.id === pending?.id || incoming.id === ack?.id) return;
+  async function accept(received, game, cancelled) {
+    if (!received || received.id === pending?.id || received.id === ack?.id) return;
+    // Use the remaining lifetime when the server sends it, so a drifting local clock cannot expire commands.
+    const incoming = Number.isFinite(received.expiresIn) ? { ...received, expiresAt: Date.now() + received.expiresIn } : received;
     if (!game || incoming.sessionId !== game.sessionId) ack = { id: incoming.id, result: 'game_offline' };
     else if (!Number.isFinite(incoming.expiresAt) || incoming.expiresAt <= Date.now() || incoming.expiresAt > Date.now() + 20_000) ack = { id: incoming.id, result: 'expired' };
     else {
