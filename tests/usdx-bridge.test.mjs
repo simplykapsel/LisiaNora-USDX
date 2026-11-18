@@ -23,6 +23,15 @@ test('queue searches all INI libraries and rejects ambiguous or escaping selecti
   await assert.rejects(createLibraryResolver([first, second])('missing.txt', hash), /not_found/);
 });
 
+test('a chart at its catalog path skips the moved-chart search in other libraries', async t => {
+  const root = await temporary(t);
+  const first = path.join(root, 'first'), second = path.join(root, 'second');
+  await mkdir(path.join(first, 'elsewhere'), { recursive: true }); await mkdir(second);
+  await writeFile(path.join(first, 'elsewhere', 'Kopia.txt'), 'chart');
+  const chart = path.join(second, 'Piosenka.txt'); await writeFile(chart, 'chart');
+  assert.equal(await createLibraryResolver([first, second])('Piosenka.txt', hash), await realpath(chart));
+});
+
 test('playback targets a confirmed selection and the current take, including after a slow file check', async t => {
   const root = await temporary(t);
   const file = path.join(root, 'song.txt');

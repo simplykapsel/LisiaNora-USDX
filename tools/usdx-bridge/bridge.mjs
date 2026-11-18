@@ -62,21 +62,28 @@ export function createSongResolver(root) {
     try { return await resolveSong(base, path.relative(base, matches[0]).split(path.sep).join('/'), hash); }
     catch (error) { index = null; throw error; }
   }
-  return (relative, hash) => resolveSong(root, relative, hash, { findMoved });
+  return (relative, hash, search = true) => resolveSong(root, relative, hash, search ? { findMoved } : {});
 }
 
 export function createLibraryResolver(roots) {
   const resolvers = roots.map(createSongResolver);
-  return async (relative, hash) => {
+  async function find(relative, hash, search) {
     const matches = new Set();
     let stale = false;
     for (const resolve of resolvers) {
-      try { matches.add(await resolve(relative, hash)); }
+      try { matches.add(await resolve(relative, hash, search)); }
       catch (error) {
         if (error.message === 'stale_file') stale = true;
         else if (error.message !== 'not_found') throw error;
       }
     }
+    return { matches, stale };
+  }
+  return async (relative, hash) => {
+    // A moved-chart search hashes every chart in a library and can outlast the command,
+    // so run it only when no library has the catalog path.
+    let { matches, stale } = await find(relative, hash, false);
+    if (!matches.size) ({ matches, stale } = await find(relative, hash, true));
     if (matches.size === 1) return [...matches][0];
     throw new Error(matches.size === 0 && stale ? 'stale_file' : 'not_found');
   };
