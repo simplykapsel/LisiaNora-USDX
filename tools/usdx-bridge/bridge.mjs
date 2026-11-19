@@ -103,14 +103,21 @@ export async function atomicJson(file, value) {
   } finally { await rm(temporary, { force: true }); }
 }
 export async function gameStatus(directory) {
-  try {
-    const file = path.join(directory, 'status.json');
-    if ((await stat(file)).size > 16384) return null;
-    const game = JSON.parse(await readFile(file, 'utf8'));
-    if (game.protocol !== 1 || typeof game.sessionId !== 'string' || typeof game.ready !== 'boolean'
-      || !Number.isFinite(game.updatedAt) || Math.abs(Date.now() / 1000 - game.updatedAt) > 5) return null;
-    return game;
-  } catch { return null; }
+  const file = path.join(directory, 'status.json');
+  // The game replaces status.json by delete + rename; a read between the two must not look like a closed game,
+  // or the queue expires the command the game is executing.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      if ((await stat(file)).size > 16384) return null;
+      const game = JSON.parse(await readFile(file, 'utf8'));
+      if (game.protocol !== 1 || typeof game.sessionId !== 'string' || typeof game.ready !== 'boolean'
+        || !Number.isFinite(game.updatedAt) || Math.abs(Date.now() / 1000 - game.updatedAt) > 5) return null;
+      return game;
+    } catch {
+      if (attempt >= 3) return null;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+  }
 }
 export function validateConfig(config) {
   const url = new URL(config.serverUrl);
@@ -129,7 +136,7 @@ export function canExecute(command, game) {
   const action = command.action ?? 'select';
   if (!game || game.sessionId !== command.sessionId) throw new Error('game_offline');
   if (action === 'select') { if (!game.ready) throw new Error('busy'); }
-  else if (game.controlProtocol !== 2) throw new Error('unsupported');
+  else if (!(game.controlProtocol >= 2)) throw new Error('unsupported');
   else if (action === 'start') {
     if (!game.canStart || !command.selectionId || command.selectionId !== game.selectionId) throw new Error('busy');
   } else if (action === 'reset') {
@@ -147,13 +154,31 @@ export async function prepareGameCommand(config, command, resolve) {
   if (command.expiresAt <= Date.now()) throw new Error('expired');
   return { protocol: action === 'select' ? 1 : 2, action, id: command.id, sessionId: command.sessionId,
     file, selectionId: command.selectionId, performanceId: command.performanceId,
+    ...(action === 'start' && current.controlProtocol >= 3 ? { players: playerNames(command.players), swapVoices: command.swapVoices === true } : {}),
     expiresAt: Math.floor(command.expiresAt / 1000) };
 }
 
-function queueState(game) {
+// The game font has no emoji and control characters must not reach the screen.
+export function playerNames(players) {
+  if (!Array.isArray(players)) return [];
+  return players.flatMap(player => {
+    const name = [...String(player?.name ?? '').normalize('NFC').replace(/[\p{Cc}\p{Cf}\p{Extended_Pictographic}\u{FE0E}\u{FE0F}]/gu, '').replace(/\s+/gu, ' ').trim()].slice(0, 24).join('').trim();
+    return Number.isInteger(player?.slot) && player.slot >= 1 && player.slot <= 6 && name ? [{ slot: player.slot, name }] : [];
+  });
+}
+
+// The queue validates reports strictly, so only known result fields leave the stage computer.
+function performanceResult(result) {
+  if (!result || typeof result.performanceId !== 'string' || !Array.isArray(result.players)) return undefined;
+  return { performanceId: result.performanceId, rapToFreestyle: result.rapToFreestyle === true,
+    players: result.players.slice(0, 6).map(({ slot, track, score }) => ({ slot, track, score })) };
+}
+
+export function queueState(game) {
   if (!game) return null;
-  const { sessionId, ready, controlProtocol, canStart, canReset, awaitingPlayers, selectionId, performanceId, performanceState } = game;
-  return { sessionId, ready, controlProtocol, canStart, canReset, awaitingPlayers, selectionId, performanceId, performanceState };
+  const { sessionId, ready, controlProtocol, canStart, canReset, awaitingPlayers, selectionId, performanceId, performanceState, playerCount, duetSwapped } = game;
+  return { sessionId, ready, controlProtocol, canStart, canReset, awaitingPlayers, selectionId, performanceId, performanceState,
+    playerCount, duetSwapped, performanceResult: performanceResult(game.performanceResult) };
 }
 
 function gameResult(pending, game) {
@@ -243,7 +268,8 @@ export async function runBridge(input, { signal, onConnection = console.info } =
     });
     try {
       while (!closed && !signal?.aborted) {
-        if (Date.now() - lastReply > (ready ? 35_000 : 5_000)) break;
+        // A heartbeat every 5 s and 15 s without any reply spot a dead link (e.g. a dropped mobile connection) quickly.
+        if (Date.now() - lastReply > (ready ? 15_000 : 5_000)) break;
         if (socket.readyState === WebSocket.OPEN) {
           const game = await gameStatus(config.exchangePath);
           if (closed || signal?.aborted) break;
@@ -252,7 +278,7 @@ export async function runBridge(input, { signal, onConnection = console.info } =
           if (state !== previous) { socket.send(state); previous = state; }
           if (ready) {
             report(game ? 'Połączono z kolejką i USDX.' : 'Połączono z kolejką. Uruchom USDX z obsługą kolejki.');
-            if (Date.now() - heartbeatAt >= 15_000) {
+            if (Date.now() - heartbeatAt >= 5_000) {
               socket.send('{"type":"heartbeat"}');
               heartbeatAt = Date.now();
             }
@@ -284,7 +310,8 @@ export async function runBridge(input, { signal, onConnection = console.info } =
         // Do not log request headers, token, response bodies, or song paths.
         report('Brak połączenia z kolejką. Sprawdź adres i klucz. Ponawiam połączenie.');
       }
-      await wait(Math.min(500, nextSocket - Date.now()));
+      // A slow poll can outlast the retry window; a negative delay only makes Node warn.
+      await wait(Math.max(0, Math.min(500, nextSocket - Date.now())));
     }
     retry = Math.min(15_000, retry * 2);
   }
