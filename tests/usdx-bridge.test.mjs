@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, rm, realpath, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveSong, createSongResolver, createLibraryResolver, validateConfig, prepareGameCommand, canExecute } from '../tools/usdx-bridge/bridge.mjs';
+import { resolveSong, createSongResolver, createLibraryResolver, validateConfig, prepareGameCommand, canExecute, playerNames, queueState, gameStatus } from '../tools/usdx-bridge/bridge.mjs';
 const token = 'a'.repeat(43);
 const hash = createHash('sha256').update('chart').digest('hex');
 
@@ -53,6 +53,38 @@ test('playback targets a confirmed selection and the current take, including aft
   assert.throws(() => canExecute({ ...reset, performanceId: 'old-take' }, game), /busy/);
   assert.throws(() => canExecute(reset, { ...game, sessionId: 'new-session' }), /game_offline/);
   await assert.rejects(prepareGameCommand({ exchangePath: root }, { ...reset, expiresAt: 1 }), /expired/);
+});
+
+test('protocol 3 passes cleaned player names and the voice swap to the game, and only known result fields to the queue', async t => {
+  const root = await temporary(t);
+  const file = path.join(root, 'song.txt');
+  const game = { protocol: 1, controlProtocol: 3, sessionId: 'session', ready: true, canStart: true,
+    selectionId: 'selection', selectedFile: file, updatedAt: Date.now() / 1000 };
+  await writeFile(path.join(root, 'status.json'), JSON.stringify(game));
+  const players = [{ slot: 1, name: ' Żaneta 🦊 Łódź\u0007 ' }, { slot: 2, name: '🦊' }, { slot: 7, name: 'Extra' }, { slot: 3, name: 'x'.repeat(40) }];
+  const command = { id: 'take', sessionId: 'session', action: 'start', selectionId: 'selection', expiresAt: Date.now() + 15000, players, swapVoices: true };
+  const prepared = await prepareGameCommand({ exchangePath: root }, command, async () => file);
+  assert.deepEqual(prepared.players, [{ slot: 1, name: 'Żaneta Łódź' }, { slot: 3, name: 'x'.repeat(24) }]);
+  assert.equal(prepared.swapVoices, true);
+  await writeFile(path.join(root, 'status.json'), JSON.stringify({ ...game, controlProtocol: 2 }));
+  const old = await prepareGameCommand({ exchangePath: root }, command, async () => file);
+  assert.equal(old.players, undefined, 'An older game gets exactly the protocol 2 command');
+  const report = queueState({ ...game, playerCount: 2, duetSwapped: true, performanceResult: { performanceId: 'take', rapToFreestyle: false, extra: 1,
+    players: [{ slot: 1, track: 2, level: 1, score: 7120, notes: 6000 }] } });
+  assert.deepEqual(report.performanceResult, { performanceId: 'take', rapToFreestyle: false, players: [{ slot: 1, track: 2, score: 7120 }] });
+  assert.equal(report.playerCount, 2); assert.equal(report.duetSwapped, true);
+  assert.deepEqual(playerNames('nope'), []);
+});
+
+test('a status read between the game deleting and renaming status.json still finds the game', async t => {
+  const root = await temporary(t);
+  const status = { protocol: 1, sessionId: 'session', ready: true, updatedAt: Date.now() / 1000 };
+  setTimeout(() => void writeFile(path.join(root, 'status.json'), JSON.stringify(status)), 30);
+  assert.equal((await gameStatus(root))?.sessionId, 'session');
+  await writeFile(path.join(root, 'status.json'), JSON.stringify({ ...status, updatedAt: Date.now() / 1000 - 60 }));
+  assert.equal(await gameStatus(root), null, 'A stale game is still reported missing');
+  await rm(path.join(root, 'status.json'));
+  assert.equal(await gameStatus(root), null, 'A closed game is reported missing after the retries');
 });
 
 async function temporary(t) {

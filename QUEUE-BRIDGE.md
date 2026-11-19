@@ -6,7 +6,7 @@ Launcher dodaje `-SongPath <biblioteka bridge>`. Przy obu argumentach gra ładuj
 
 ## Wymiana plików
 
-Bridge łączy się z serwerem kolejki przez WebSocket pod `/api/bridge/usdx/socket`, używając adresu i klucza z obecnego profilu. Po połączeniu przesyła stan gry, następnie wysyła zmiany i potwierdzenia poleceń. Zmiana samego czasu zapisu `status.json` odbywa się lokalnie. Co 15 sekund bridge wysyła krótki komunikat sprawdzający połączenie. Po zerwaniu połączenia ponawia je i wysyła aktualny stan wraz z ostatnim potwierdzeniem. Przy aktualizacji stanowiska najpierw zaktualizuj serwer Queue.
+Bridge łączy się z serwerem kolejki przez WebSocket pod `/api/bridge/usdx/socket`, używając adresu i klucza z obecnego profilu. Po połączeniu przesyła stan gry, następnie wysyła zmiany i potwierdzenia poleceń. Zmiana samego czasu zapisu `status.json` odbywa się lokalnie. Co 5 sekund bridge wysyła krótki komunikat sprawdzający połączenie; bez odpowiedzi przez 15 s uznaje połączenie za zerwane, a serwer uznaje stanowisko za rozłączone po 20 s ciszy. Po zerwaniu połączenia ponawia je i wysyła aktualny stan wraz z ostatnim potwierdzeniem. Przy aktualizacji stanowiska najpierw zaktualizuj serwer Queue.
 
 Jeden bridge na katalog. Zapis przez plik tymczasowy i zmianę nazwy. UTF-8, JSON, maksymalnie 16 KiB polecenia. Gra odczytuje polecenia na głównym wątku co 100 ms; status zapisuje co sekundę i po wyniku.
 
@@ -27,6 +27,14 @@ Status nadal ma `protocol=1`, aby zachować zgodność wyboru piosenek. Nowa gra
 - Cofnij Start: `protocol=2`, `action=reset`, `id`, `sessionId`, `performanceId`, `expiresAt`. Działa tylko na wskazanym wykonaniu. Zatrzymuje odtwarzanie i nagrywanie, pomija zapis wyniku i ekran wyników, wraca do tej samej piosenki. Gracze pozostają zatwierdzeni. Ponowny Start rozpoczyna utwór od początku. Cofnięcie nie wymaga ponownego odczytu pliku piosenki.
 - `performanceState`: `starting`, `singing`, `stopped`, `finished`, `error` lub pusty przed pierwszym Start. Stan końcowy pozostaje dostępny po krótkiej utracie połączenia. Normalne zakończenie daje `finished`; przerwanie przez gracza daje `stopped` i zachowuje zwykły ekran końcowy USDX.
 - Aplikacja kolejki zmienia status dopiero na podstawie potwierdzenia rzeczywistego wykonania. Cofnięcie przywraca wcześniejszy status i zeruje czas Start. Koniec utworu oznacza pozycję jako zakończoną; szacunkowy timer nie kończy sam aktywnego wykonania USDX. Identyfikator wykonania jest zapisany w bazie Queue, więc restart API nie odbiera możliwości Cofnij Start. Po restarcie API nowy Start wymaga ponownego „Wybierz”. Restart gry przywraca przerwaną pozycję do oczekiwania.
+
+## Imiona i wyniki (controlProtocol 3)
+
+Gra ogłasza `controlProtocol=3`, `playerCount` (liczba graczy po zatwierdzeniu ekranu graczy) i `duetSwapped` (stan zamiany głosów Spacją).
+
+- Start może zawierać `players`: lista `{slot, name}` dla graczy 1–6 oraz `swapVoices`. Bridge usuwa znaki sterujące i emoji, a imię skraca do 24 znaków. Gra ustawia imiona tylko na ten występ, dla slotów do `playerCount`; reszta graczy zachowuje imiona z gry, a `config.ini` się nie zmienia. `swapVoices` działa tylko przy duecie i wygrywa ze Spacją.
+- Po naturalnym końcu utworu status zawiera `performanceResult`: `performanceId`, `rapToFreestyle` i `players` z `slot`, `track` (1 = P1, 2 = P2, także po zamianie) i `score` (0–10 000, te same liczby co na ekranie wyników). Wynik zostaje w statusie do następnego Start; przerwanie (Cofnij Start, Escape) nie daje wyniku.
+- Serwer wysyła imiona tylko grze z protokołem 3 i zapisuje każdy wynik raz na `performanceId` i slot.
 
 Wymagane są aktualne wersje gry, bridge i aplikacji Queue. Profile i token pozostają takie same. Stara gra nadal obsługuje wybór; panel wyświetla potrzebę aktualizacji przed zdalnym Start. Bez skonfigurowanego `USDX_BRIDGE_TOKEN` aplikacja zachowuje ręczną obsługę statusu kolejki.
 

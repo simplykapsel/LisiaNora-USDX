@@ -14,6 +14,7 @@ $log = Join-Path $local 'player-flow.log'
 $pythonExecutable = (Get-Command $Python).Source
 $script = Join-Path $PSScriptRoot 'smoke-player-flow.py'
 $proc = Start-Process -FilePath $pythonExecutable -WorkingDirectory $repo -ArgumentList "`"$script`"" -WindowStyle Hidden -PassThru -RedirectStandardOutput $log -RedirectStandardError (Join-Path $local 'player-flow-error.log')
+$null = $proc.Handle # Without an open handle, ExitCode stays empty after WaitForExit and a pass reads as a failure.
 if (!$proc.WaitForExit(60000)) { & taskkill.exe /PID $proc.Id /T /F | Out-Null; throw 'Player-flow test timed out.' }
 if ($proc.ExitCode -ne 0 -or ([string](Get-Content -LiteralPath $log -Raw)) -notmatch 'PASS:') { Get-Content -LiteralPath $log -Tail 20; Get-Content (Join-Path $local 'player-flow-error.log') -Tail 12; throw 'Player-flow regression failed.' }
 Get-Content -LiteralPath $log
