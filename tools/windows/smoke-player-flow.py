@@ -2,7 +2,7 @@
 import json, os, time, uuid, subprocess, queue, threading, re, sqlite3
 from pathlib import Path
 repo = Path(__file__).resolve().parents[2]
-process = subprocess.Popen([r'C:\lazarus\mingw\x86_64-win64\bin\gdb.exe', '--interpreter=mi2', '--quiet', 'ultrastardx.exe'],
+process = subprocess.Popen([r'C:\lazarus\mingw\x86_64-win64\bin\gdb.exe', '--interpreter=mi2', '--quiet', os.environ.get('USDX_TEST_EXE', 'ultrastardx.exe')],
     cwd=repo/'game', stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     text=True, encoding='utf-8', errors='replace', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
 lines=queue.Queue()
@@ -94,7 +94,8 @@ try:
                 phase=2
             elif phase == 2 and game.get('canStart'):
                 scores_before = sqlite3.connect(repo/'.local/player-flow.db').execute('SELECT COUNT(*) FROM US_Scores').fetchone()[0]
-                first_start = remote('start', selectionId=selection_id)
+                assert game['controlProtocol'] == 3 and game['playerCount'] == count_before and game['duetSwapped'] is False
+                first_start = remote('start', selectionId=selection_id, players=[{'slot': 1, 'name': 'Kitsune'}, {'slot': 7, 'name': 'Ignored'}], swapVoices=True)
                 phase=3
             elif phase == 3 and game.get('id') == first_start and game.get('result') == 'started':
                 assert game['screen'] == 'sing' and game['performanceState'] == 'singing'
@@ -105,13 +106,19 @@ try:
                 phase=9 if completion_flow else 31
             elif phase == 9 and game.get('performanceState') == 'finished' and game.get('screen') == 'other':
                 assert game['performanceId'] == first_start and game['screen'] == 'other'
-                print('PASS: remote Start -> natural song end -> score screen and finished status.')
+                result = game['performanceResult']
+                assert result['performanceId'] == first_start and result['rapToFreestyle'] is False
+                # A solo test song ignores swapVoices, so every player sang voice 1.
+                assert [(p['slot'], p['track']) for p in result['players']] == [(i + 1, 1) for i in range(count_before)], result
+                assert all(0 <= p['score'] <= 10000 for p in result['players']), result
+                print('PASS: remote Start with names -> natural song end -> score screen, finished status and performanceResult.')
                 break
             elif phase == 31 and game.get('canReset'):
                 reset_id = remote('reset', performanceId=first_start)
                 phase=4
             elif phase == 4 and game.get('id') == reset_id and game.get('result') == 'reset':
                 assert game['screen'] == 'song' and game['performanceState'] == 'stopped' and game['canStart'], game
+                assert 'performanceResult' not in game, 'An aborted take must not report scores'
                 assert os.path.normcase(game['selectedFile']) == os.path.normcase(song)
                 assert sqlite3.connect(repo/'.local/player-flow.db').execute('SELECT COUNT(*) FROM US_Scores').fetchone()[0] == scores_before
                 remote('start', first_start, selectionId=selection_id) # Replay must not start a new take.

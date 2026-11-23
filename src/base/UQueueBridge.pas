@@ -22,6 +22,7 @@ var
   SelectionFile: UTF8String;
   RecentIDs, RecentResults: array[0..63] of string;
   RecentIndex: integer = 0;
+  ResultData: TJSONObject = nil; // Scores of the last naturally finished take, kept until the next Start.
 
 function SelectedFile: IPath;
 begin
@@ -78,7 +79,10 @@ begin
   Data := TJSONObject.Create;
   try
     Data.Add('protocol', 1);
-    Data.Add('controlProtocol', 2);
+    Data.Add('controlProtocol', 3);
+    if Assigned(ScreenSing) and (PlayersPlay >= 1) then Data.Add('playerCount', PlayersPlay);
+    Data.Add('duetSwapped', ScreenSong.DuetChange);
+    if (PerformanceState = 'finished') and Assigned(ResultData) then Data.Add('performanceResult', ResultData.Clone);
     Data.Add('sessionId', SessionID);
     Data.Add('updatedAt', DateTimeToUnix(Now, false));
     Data.Add('ready', Ready);
@@ -233,12 +237,43 @@ begin
 end;
 
 procedure QueuePlaybackFinished(Completed: boolean);
+var I: integer; Players: TJSONArray;
 begin
   if PerformanceState = 'singing' then
   begin
-    if Completed then PerformanceState := 'finished' else PerformanceState := 'stopped';
+    if Completed then
+    begin
+      PerformanceState := 'finished';
+      // Finish saves local highscores from these same values without changing them first.
+      Players := TJSONArray.Create;
+      for I := 0 to PlayersPlay - 1 do
+        Players.Add(TJSONObject.Create(['slot', I + 1, 'track', Player[I].Track + 1, 'score', Player[I].ScoreTotalInt]));
+      FreeAndNil(ResultData);
+      ResultData := TJSONObject.Create(['performanceId', PerformanceID,
+        'rapToFreestyle', ScreenSong.RapToFreestyle, 'players', Players]);
+    end
+    else PerformanceState := 'stopped';
     LastStatus := 0;
   end;
+end;
+
+// Names last only for this take: the song screen restores Player[].Name from the
+// config when it is shown again, and Ini.Name is never touched.
+procedure ApplyPlayers(Data: TJSONObject);
+var Players: TJSONData; Item: TJSONObject; I, Slot: integer;
+begin
+  // The queue sends swapVoices only for duets; on a solo song DuetChange changes nothing anyway.
+  if Data.IndexOfName('swapVoices') >= 0 then ScreenSong.DuetChange := Data.Get('swapVoices', false);
+  Players := Data.Find('players', jtArray);
+  if Players = nil then Exit;
+  for I := 0 to Players.Count - 1 do
+    if Players.Items[I] is TJSONObject then
+    begin
+      Item := TJSONObject(Players.Items[I]);
+      Slot := Item.Get('slot', 0);
+      if (Slot >= 1) and (Slot <= Length(Player)) then
+        Player[Slot - 1].Name := UTF8String(Item.Get('name', ''));
+    end;
 end;
 
 procedure PollPlaybackCommand;
@@ -268,6 +303,8 @@ begin
     PerformanceState := 'starting';
     PendingID := ID;
     PendingAction := Action;
+    FreeAndNil(ResultData);
+    ApplyPlayers(Data);
     ScreenSong.StartSong;
   end
   else if Action = 'reset' then
